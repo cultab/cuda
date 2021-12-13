@@ -1,26 +1,45 @@
 
 # TODO: architecture for each card
 
-SRC = radix.cu print_array.cu
-OBJ = $(SRC:.c=.o)
+CUDA_SRC = radix.cu print.cu
+#SRC = 
+OBJ = $(CUDA_SRC:.cu=.o)
 
-NVCC_FLAGS=-arch=sm_61
-CFLAGS=-Wall -forward-unknown-to-host-compiler
+CC=nvcc
+NVCC_FLAGS=-arch=sm_61 -forward-unknown-to-host-compiler
+CCFLAGS=-Wall -Wextra -Wconversion
 
-all: options radix
+all: options debug
 
-radix.o: print_array.h types.h
-print_array.o: print_array.h
+release: clean radix
+
+debug: CCFLAGS += -DDEBUG -g
+debug: radix
+
+# default to debugging build
+run: debug
+	./radix
 
 options:
 	@echo build options:
-	@echo "CFLAGS     = $(CFLAGS)"
+	@echo "CC         = $(CC)"
+	@echo "CCFLAGS    = $(CCFLAGS)"
 	@echo "NVCC_FLAGS = $(NVCC_FLAGS)"
+	@echo "CUDA_SRC   = $(CUDA_SRC)"
+	@echo "OBJ        = $(OBJ)"
 
-radix: $(OBJ)
-	nvcc -o $@ $(OBJ) $(NVCC_FLAGS) $(CFLAGS) 
+%.o: %.cu
+	$(CC) $(NVCC_FLAGS) $(CCFLAGS) -c $<
+
+# dependencies
+radix.o: print.h types.h
+print.o: print.h
+# types.o: types.h
+
+radix: $(OBJ) $(CUDA_SRC)
+	$(CC) -o $@ $(OBJ) $(NVCC_FLAGS) $(CCFLAGS) 
 
 clean:
 	rm -f radix $(OBJ)
 
-.PHONY: all options clean
+.PHONY: all options clean run

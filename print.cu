@@ -1,4 +1,12 @@
 #include <stdio.h>
+#include <stdarg.h>
+
+// define restrict because it's not standard c++
+#ifdef __GNUC__
+#define restrict __restrict__
+#else
+#define restrict
+#endif
 
 /*
  * Print array, compiled for both host and device.
