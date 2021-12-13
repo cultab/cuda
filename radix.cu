@@ -23,7 +23,7 @@
  * Forward Declarations
  */
 
-__global__ void countAtomic(elem *, size_t, uint *);
+__global__ void count_atomic(elem *, size_t, uint *);
 __host__ uint *prefix_sum(uint *, size_t, int, int);
 __global__ void prefix_sum_kernel(uint *, uint *, uint, size_t);
 __global__ void move(uint *, elem *);
@@ -55,7 +55,7 @@ inline void cudaPrintError(cudaError_t cudaerr, const char *file, int line)
  * Functions
  */
 
-__global__ void countAtomic(elem *array, size_t size, uint *counts)
+__global__ void count_atomic(elem *array, size_t size, uint *counts)
 {
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
@@ -229,7 +229,7 @@ int main(void)
     print_array(array, size, "unsorted");
 
     // count frequencies
-    countAtomic<<<blocks, threads>>>(d_array, size, d_counts);
+    count_atomic<<<blocks, threads>>>(d_array, size, d_counts);
     cudaLastErr();
 
     // copy counts back to host only to print them
