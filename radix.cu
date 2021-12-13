@@ -211,7 +211,7 @@ int main(void)
     cudaErr(cudaMalloc((void **)&d_output, size * sizeof(elem)));
 
     for (size_t i = 0; i < size; ++i) {
-        // HACK: only because we only iterate once
+        // HACK: limit numbers to [0, MAGIC_NUM] because we only iterate once
         array[i] = rand() % MAGIC_NUM;
         output[i] = -1337;
     }
