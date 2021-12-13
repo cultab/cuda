@@ -17,7 +17,7 @@
  * Forward Declarations
  */
 
-__global__ void countAtomic(elem *, int, uint *);
+__global__ void countAtomic(elem *, size_t, uint *);
 __host__ uint *prefix_sum(uint *, size_t, int, int);
 __global__ void prefix_sum_kernel(uint *, uint *, uint, size_t);
 __global__ void move(uint *, elem *);
@@ -29,7 +29,7 @@ __global__ void move(uint *, elem *);
 inline void cudaPrintError(cudaError_t cudaerr, const char *file, int line)
 {
     if (cudaerr != cudaSuccess) {
-        fprintf(stderr, "CUDA error: \"%s\" in file %s at line %d.\n", cudaGetErrorString(cudaerr), __FILE__, __LINE__);
+        fprintf(stderr, "CUDA error: \"%s\" in file %s at line %d.\n", cudaGetErrorString(cudaerr), file, line);
         exit(cudaerr);
     }
 }
@@ -49,7 +49,7 @@ inline void cudaPrintError(cudaError_t cudaerr, const char *file, int line)
  * Functions
  */
 
-__global__ void countAtomic(elem *array, int size, uint *counts)
+__global__ void countAtomic(elem *array, size_t size, uint *counts)
 {
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
@@ -210,7 +210,7 @@ int main(void)
     int threads = 256;
     int blocks = 2;
 
-    int size = 10;
+    size_t size = 10;
     elem *array = NULL;
     elem *output = NULL;
     uint *counts = NULL;
