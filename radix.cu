@@ -7,11 +7,17 @@
 #include "print.h"
 
 /*
- * Type and Constant Definitions
+ * Constant Definitions and Cuda weirdness
  */
 
 // number of different keys to count
 #define MAGIC_NUM 256
+
+#ifdef __CUDA_ARCH__
+#define syncthreads() __syncthreads()
+#else
+#define syncthreads()
+#endif
 
 /*
  * Forward Declarations
@@ -59,7 +65,7 @@ __global__ void countAtomic(elem *array, size_t size, uint *counts)
     if (tid < MAGIC_NUM) {
         local_counts[threadIdx.x] = 0;
     }
-    __syncthreads();
+    syncthreads();
 
     // HACK: make it by order
     static uint mask = 0b11111111;
@@ -72,7 +78,7 @@ __global__ void countAtomic(elem *array, size_t size, uint *counts)
 
     /* __syncthreads(); if (tid == 0) print_array(local_counts, MAGIC_NUM, "local_counts"); */
 
-    __syncthreads();
+    syncthreads();
 
     if (tid < MAGIC_NUM) {
         /* debug("adding local_counts[%d]=%d to counts[%d]=%d\n", threadIdx.x, local_counts[threadIdx.x], threadIdx.x, */
@@ -180,31 +186,6 @@ __global__ void move(elem *unsorted, size_t size, uint *prefix_sums, elem *outpu
     /* __syncthreads(); */
 }
 
-/* __global__ void move(int *array, int size, int *prefix, int *output, unsigned int mask) { */
-/*         int tid = threadIdx.x; */
-/*         int offset = 0; */
-/*  */
-/*         if (tid != 0) { */
-/*                 offset = prefix[tid - 1]; */
-/*         } else { */
-/*                 offset = 0; */
-/*                 // print_arr_in_gpu(prefix, size, "dev_prefix"); */
-/*                 // printf("-------------- prefix[tid-1] = prefix[%d] = %d\n", tid-1, prefix[tid-1]); */
-/*                 // printf("-------------- prefix[tid-2] = prefix[%d] = %d\n", tid-2, prefix[tid-2]); */
-/*         } */
-/*  */
-/*         printf("tid(%d): offset=%d\n", tid, offset); */
-/*  */
-/*         for (int i=size-1; i>=0; --i) { */
-/*                 // if this thread cares for the current number */
-/*                 if ((array[i]) == tid) { */
-/*                         output[offset++] = array[i]; */
-/*                         printf("moving %d from array[%d] to output[%d]\n", array[i], i, offset - 1); */
-/*                         // printf("output[%d] = array[%d] = %d\n", offset - 1, i, array[i]); */
-/*                 } */
-/*         } */
-/* } */
-
 int main(void)
 {
     int threads = 256;
@@ -249,6 +230,7 @@ int main(void)
 
     // count frequencies
     countAtomic<<<blocks, threads>>>(d_array, size, d_counts);
+    cudaLastErr();
 
     // copy counts back to host only to print them
     cudaErr(cudaMemcpy(counts, d_counts, MAGIC_NUM * sizeof(uint), cudaMemcpyDeviceToHost));
@@ -265,8 +247,36 @@ int main(void)
 
     // move unsorted elements to the correct possition
     move<<<blocks, threads>>>(d_array, size, d_prefix_sums, d_output);
+    cudaLastErr();
 
     cudaErr(cudaMemcpy(output, d_output, size * sizeof(elem), cudaMemcpyDeviceToHost));
 
     print_array(output, size, "sorted");
 }
+
+/* commented  out code {{{*/
+/* __global__ void move(int *array, int size, int *prefix, int *output, unsigned int mask) { */
+/*         int tid = threadIdx.x; */
+/*         int offset = 0; */
+/*  */
+/*         if (tid != 0) { */
+/*                 offset = prefix[tid - 1]; */
+/*         } else { */
+/*                 offset = 0; */
+/*                 // print_arr_in_gpu(prefix, size, "dev_prefix"); */
+/*                 // printf("-------------- prefix[tid-1] = prefix[%d] = %d\n", tid-1, prefix[tid-1]); */
+/*                 // printf("-------------- prefix[tid-2] = prefix[%d] = %d\n", tid-2, prefix[tid-2]); */
+/*         } */
+/*  */
+/*         printf("tid(%d): offset=%d\n", tid, offset); */
+/*  */
+/*         for (int i=size-1; i>=0; --i) { */
+/*                 // if this thread cares for the current number */
+/*                 if ((array[i]) == tid) { */
+/*                         output[offset++] = array[i]; */
+/*                         printf("moving %d from array[%d] to output[%d]\n", array[i], i, offset - 1); */
+/*                         // printf("output[%d] = array[%d] = %d\n", offset - 1, i, array[i]); */
+/*                 } */
+/*         } */
+/* } */
+/*}}}*/
