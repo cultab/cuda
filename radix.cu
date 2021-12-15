@@ -142,6 +142,7 @@ __global__ void prefix_sum_kernel(uint *in, uint *out, uint j, size_t size)
 {
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
+    // PERF: shift instead of pow(2, *)?
     // don't go out of bounds
     if (tid < size) {
         if (tid >= pow(2, j - 1)) {
@@ -182,8 +183,6 @@ __global__ void move(elem *unsorted, size_t size, uint *prefix_sums, elem *outpu
 
     /* __syncthreads(); */
     /* if (tid == 0) print_array(local_counts, MAGIC_NUM, "local_counts"); */
-
-    /* __syncthreads(); */
 }
 
 int main(void)
