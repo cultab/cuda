@@ -11,7 +11,8 @@
  */
 
 // number of different keys to count
-#define MAGIC_NUM 256
+#define KEYS_COUNT 256
+#define KEY_MAX_VALUE KEYS_COUNT - 1
 
 #ifdef __CUDA_ARCH__
 #define syncthreads() __syncthreads()
@@ -23,10 +24,10 @@
  * Forward Declarations
  */
 
-__global__ void count_atomic(elem *, size_t, uint *);
+__global__ void count_atomic(elem *, size_t, uint *, uint, size_t);
 __host__ uint *prefix_sum(uint *, size_t, int, int);
 __global__ void prefix_sum_kernel(uint *, uint *, uint, size_t);
-__global__ void move(uint *, elem *);
+__global__ void move(uint *, elem *, uint, uint);
 
 /*
  * Macros
@@ -55,32 +56,29 @@ inline void cudaPrintError(cudaError_t cudaerr, const char *file, int line)
  * Functions
  */
 
-__global__ void count_atomic(elem *array, size_t size, uint *counts)
+__global__ void count_atomic(elem *array, size_t size, uint *counts, uint mask, size_t shift)
 {
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
 
-    __shared__ uint local_counts[MAGIC_NUM];
+    __shared__ uint local_counts[KEYS_COUNT];
 
-    if (tid < MAGIC_NUM) {
+    if (tid < KEYS_COUNT) {
         local_counts[threadIdx.x] = 0;
     }
     syncthreads();
 
-    // HACK: make it by order
-    static uint mask = 0b11111111;
-
     for (size_t i = tid; i < size; i += stride) {
-        /* debug("tid(%d): size=%d stride=%d i=%lu\n", tid, size, stride, i); */
-        atomicAdd(&local_counts[array[i] & mask], 1);
-        debug("tid(%d): local_counts[%u] = %d\n", tid, array[i] & mask, local_counts[array[i] & mask]);
+        /* debug("tid(%d): size=%ld stride=%d i=%ld\n", tid, size, stride, i); */
+        atomicAdd(&local_counts[(array[i] & mask) >> (8 * shift)], 1);
+        /* debug("tid(%d): local_counts[%u] = %d\n", tid, array[i] & mask, local_counts[array[i] & mask]); */
     }
 
-    /* __syncthreads(); if (tid == 0) print_array(local_counts, MAGIC_NUM, "local_counts"); */
+    /* __syncthreads(); if (tid == 0) print_array(local_counts, KEYS_COUNT, "local_counts"); */
 
     syncthreads();
 
-    if (tid < MAGIC_NUM) {
+    if (tid < KEYS_COUNT) {
         /* debug("adding local_counts[%d]=%d to counts[%d]=%d\n", threadIdx.x, local_counts[threadIdx.x], threadIdx.x, */
         /* counts[threadIdx.x]); */
         atomicAdd(&(counts[threadIdx.x]), local_counts[threadIdx.x]);
@@ -111,19 +109,19 @@ __host__ uint *prefix_sum(uint *counts, size_t size, int blocks, int threads)
     cudaErr(cudaMalloc((void **)&d_in, size * sizeof(uint)));
 
     // initialize in and out array to counts
-    cudaErr(cudaMemcpy(d_in, counts, MAGIC_NUM * sizeof(uint), cudaMemcpyDeviceToDevice));
-    cudaErr(cudaMemcpy(d_out, counts, MAGIC_NUM * sizeof(uint), cudaMemcpyDeviceToDevice));
+    cudaErr(cudaMemcpy(d_in, counts, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToDevice));
+    cudaErr(cudaMemcpy(d_out, counts, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToDevice));
 
     for (int j = 1; j <= floor(log2(size)); j += 1) {
         prefix_sum_kernel<<<blocks, threads>>>(d_in, d_out, j, size);
         cudaLastErr();
 
-        /* cudaErr(cudaMemcpy(check, d_out, MAGIC_NUM * sizeof(uint), cudaMemcpyDeviceToHost)); */
+        /* cudaErr(cudaMemcpy(check, d_out, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToHost)); */
         /* print_array(check, size, "out array:"); */
 
         // PERF: maybe we can avoid the copy somehow?
         // copy result back to input
-        cudaErr(cudaMemcpy(d_in, d_out, MAGIC_NUM * sizeof(uint), cudaMemcpyDeviceToDevice));
+        cudaErr(cudaMemcpy(d_in, d_out, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToDevice));
         // swap in and out
         d_temp = d_in;
         d_in = d_out;
@@ -145,44 +143,23 @@ __global__ void prefix_sum_kernel(uint *in, uint *out, uint j, size_t size)
     // PERF: shift instead of pow(2, *)?
     // don't go out of bounds
     if (tid < size) {
-        if (tid >= pow(2, j - 1)) {
-            /* printf("adding %d to %d\n",in_idx, out_idx); */
-            out[tid] += in[tid - (int)pow(2, j - 1)];
+        if (tid >= __powf(2, j - 1)) {
+            out[tid] += in[tid - (int)__powf(2, j - 1)];
+            /* debug("out[%d] += %d\n", tid, in[tid - (int)__powf(2, j - 1)]); */
         }
     }
 }
 
-__global__ void move(elem *unsorted, size_t size, uint *prefix_sums, elem *output)
-{
+
+/* zero out a device array */
+__global__ void zero_array(uint *d_array, size_t size) {
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
-    int offset = 0;
 
-    /*     __shared__ uint local_offsets[MAGIC_NUM]; */
-
-    // HACK: make it by order
-    static uint mask = 0b11111111;
-
-    // offset is prefix sum of previous number,
-    // if there is no previous thread, use the last pos in the array,
-    // initializing it to zero
-    if (tid == 0) {
-        prefix_sums[MAGIC_NUM - 1] = 0;
+    for (size_t i = tid; i < size; i += stride) {
+        /* debug("write to %ld size = %ld\n", i, size); */
+        d_array[i] = 0;
     }
-
-    // i is int, should it be size_t?
-    for (int i = size - tid - 1; i >= 0; i -= stride) {
-        if (unsorted[i] == 0) {
-            offset = atomicAdd(&prefix_sums[MAGIC_NUM - 1], 1);
-        } else {
-            offset = atomicAdd(&prefix_sums[unsorted[i] - 1], 1);
-        }
-        debug("tid(%d) move unsorted[%d]=%d to output[%d]=%d\n", tid, i, unsorted[i], offset, output[offset]);
-        output[offset] = unsorted[i];
-    }
-
-    /* __syncthreads(); */
-    /* if (tid == 0) print_array(local_counts, MAGIC_NUM, "local_counts"); */
 }
 
 int main(void)
@@ -190,68 +167,160 @@ int main(void)
     int threads = 256;
     int blocks = 2;
 
-    size_t size = 10;
-    elem *array = NULL;
+    size_t size = 50;
+    elem *unsorted = NULL;
     elem *output = NULL;
     uint *counts = NULL;
     uint *prefix_sums = NULL;
 
-    elem *d_array = NULL;
+    elem *d_unsorted = NULL;
     uint *d_counts = NULL;
     uint *d_prefix_sums = NULL;
     elem *d_output = NULL;
 
-    array = (elem *)malloc(size * sizeof(elem));
-    counts = (uint *)malloc(MAGIC_NUM * sizeof(uint));
-    prefix_sums = (uint *)malloc(MAGIC_NUM * sizeof(uint));
+    unsorted = (elem *)malloc(size * sizeof(elem));
+    counts = (uint *)malloc(KEYS_COUNT * sizeof(uint));
+    prefix_sums = (uint *)malloc(KEYS_COUNT * sizeof(uint));
     output = (elem *)malloc(size * sizeof(elem));
 
-    cudaErr(cudaMalloc((void **)&d_array, size * sizeof(elem)));
-    cudaErr(cudaMalloc((void **)&d_counts, MAGIC_NUM * sizeof(uint)));
+    cudaErr(cudaMalloc((void **)&d_unsorted, size * sizeof(elem)));
+    cudaErr(cudaMalloc((void **)&d_counts, KEYS_COUNT * sizeof(uint)));
     cudaErr(cudaMalloc((void **)&d_output, size * sizeof(elem)));
 
     for (size_t i = 0; i < size; ++i) {
-        // HACK: limit numbers to [0, MAGIC_NUM] because we only iterate once
-        array[i] = rand() % MAGIC_NUM;
+        /* unsorted[i] = rand() % (1 * KEY_MAX_VALUE) + KEY_MAX_VALUE; */
+        /* unsorted[i] = rand(); */
+        unsorted[i] = rand() % KEY_MAX_VALUE;
+        /* unsorted[i] = rand() % 1000; */
+
         output[i] = -1337;
     }
-    /* for (int i = 0; i < MAGIC_NUM; ++i) { */
+    unsorted[2] = 0;
+    unsorted[4] = 1;
+    unsorted[5] = 255;
+
+    /* for (int i = 0; i < KEYS_COUNT; ++i) { */
     /*     counts[i] = 0; */
     /* } */
 
     // move array to device
-    cudaErr(cudaMemcpy(d_array, array, size * sizeof(elem), cudaMemcpyHostToDevice));
+    cudaErr(cudaMemcpy(d_unsorted, unsorted, size * sizeof(elem), cudaMemcpyHostToDevice));
 
     // for testing, to make sure the values change
     cudaErr(cudaMemcpy(d_output, output, size * sizeof(elem), cudaMemcpyHostToDevice));
 
-    print_array(array, size, "unsorted");
+    size_t elem_size = sizeof(elem) * 8;
+    long unsigned iters = (long unsigned)((double)elem_size / log2(KEYS_COUNT));
+    size_t mask_s = elem_size / iters;
+    unsigned int mask = 0;
+    unsigned int mask_shift = 0;
+    /* unsigned int KEYS_COUNT = pow(2, 8); */
 
-    // count frequencies
-    count_atomic<<<blocks, threads>>>(d_array, size, d_counts);
-    cudaLastErr();
+    for (size_t shift=0; shift < iters; ++shift) {
 
-    // copy counts back to host only to print them
-    cudaErr(cudaMemcpy(counts, d_counts, MAGIC_NUM * sizeof(uint), cudaMemcpyDeviceToHost));
+        if (shift != 0)
+            exit(0);
+        zero_array<<<blocks, threads>>>(d_counts, KEYS_COUNT);
+        cudaLastErr();
 
-    print_array(counts, MAGIC_NUM, "counts");
+        debug("########################\n# ITERATION %lu OUT OF %lu #\n########################\n", shift+1, iters);
+        // keep a copy of the mask
+        uint old_mask = mask;
 
-    // get prefix sums of counts
-    d_prefix_sums = prefix_sum(d_counts, MAGIC_NUM, 4, MAGIC_NUM / 4);
+        // create a mask of size mask_s
+        for (; mask_shift < mask_s * (shift + 1); mask_shift++) {
+                mask |= (1 << mask_shift);
+        }
 
-    // copy prefix sums back to host only to print them
-    cudaErr(cudaMemcpy(prefix_sums, d_prefix_sums, MAGIC_NUM * sizeof(uint), cudaMemcpyDeviceToHost));
+        // TODO: comments
+        // now use the old_mask to trim off bits that we already used
+        if (shift > 0) {
+            mask ^= old_mask;
+        }
 
-    print_array(prefix_sums, MAGIC_NUM, "prefix_sum");
+        debug("mask:\n");
+        print_bits(mask);
 
-    // move unsorted elements to the correct possition
-    move<<<blocks, threads>>>(d_array, size, d_prefix_sums, d_output);
-    cudaLastErr();
+        print_array(unsorted, size, "unsorted");
+        /* print_array_bits(unsorted, size, "unsorted bits"); */
 
-    cudaErr(cudaMemcpy(output, d_output, size * sizeof(elem), cudaMemcpyDeviceToHost));
+        // count frequencies
+        count_atomic<<<blocks, threads>>>(d_unsorted, size, d_counts, mask, shift);
+        cudaLastErr();
 
-    print_array(output, size, "sorted");
+        // copy counts back to host only to print them
+        cudaErr(cudaMemcpy(counts, d_counts, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToHost));
+        print_array(counts, KEYS_COUNT, "counts");
+
+        // get prefix sums of counts
+        d_prefix_sums = prefix_sum(d_counts, KEYS_COUNT, 4, KEYS_COUNT / 4);
+
+        // copy prefix sums back to host because we need them
+        cudaErr(cudaMemcpy(prefix_sums, d_prefix_sums, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToHost));
+        print_array(prefix_sums, KEYS_COUNT, "prefix_sum");
+        /* print_compare_array(counts, prefix_sums, KEYS_COUNT); */
+
+        /* move elements to sorted position */
+        int offset = 0;
+        for (int j = (int)size - 1; j >= 0; --j) {
+            unsigned long masked_elem = (unsorted[j] & mask) >> (8 * shift);
+
+            offset = prefix_sums[masked_elem];
+            prefix_sums[masked_elem] += 1;
+
+            if (shift == 0)
+                debug("moved unsorted[%4d]=%4d to output[%4d]\n", j, unsorted[j], offset);
+            output[offset - 1] = unsorted[j];
+        }
+
+        print_array(output, size, "sorted");
+        /* print_array_bits(output, size, "sorted bits"); */
+
+        cudaErr(cudaMemcpy(d_unsorted, output, size * sizeof(elem), cudaMemcpyHostToDevice));
+        cudaErr(cudaMemcpy(unsorted, output, size * sizeof(elem), cudaMemcpyHostToHost));
+    }
 }
+
+/* trash code {{{ */
+
+/* nope */
+__global__ void move(elem *unsorted, size_t size, uint *prefix_sums, elem *output, uint mask, uint shift)
+{
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    int offset = 0;
+
+    /*     __shared__ uint local_offsets[KEYS_COUNT]; */
+
+    /* // offset is prefix sum of previous number, */
+    /* // if there is no previous thread, use the last pos in the array, */
+    /* // initializing it to zero */
+    /* if (tid == 0) { */
+    /*     prefix_sums[KEYS_COUNT - 1] = prefix_sums[1]; */
+    /* } */
+
+    syncthreads();
+
+    // i is int, should it be size_t?
+    for (int i = size - tid - 1; i >= 0; i -= stride) {
+        if ((unsorted[i] & mask) >> (8 * shift) != 0) {
+            offset = atomicSub(&prefix_sums[(unsorted[i] & mask) >> (8 * shift)], 1);
+            debug("tid(%d) move unsorted[%d]=%d to output[%d]=%d\n", tid, i, unsorted[i], offset - 1, output[offset - 1]);
+            output[offset - 1] = unsorted[i];
+        }
+    }
+
+    syncthreads();
+
+
+    /* __syncthreads(); */
+    /* if (tid == 0) print_array(local_counts, KEYS_COUNT, "local_counts"); */
+}
+
+
+
+
+// }}}
 
 /* commented  out code {{{*/
 /* __global__ void move(int *array, int size, int *prefix, int *output, unsigned int mask) { */

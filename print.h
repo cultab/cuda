@@ -14,6 +14,10 @@ __device__
 #endif
 void print_array(uint *, size_t, const char *);
 
+void print_bits(int);
+void print_array_bits(int *, size_t, const char *);
+void print_compare_array(uint *, uint *, size_t);
+
 /*
  * Debug print, only prints if DEBUG is defined
  */
@@ -26,3 +30,4 @@ void print_array(uint *, size_t, const char *);
 #endif
 
 #endif
+
