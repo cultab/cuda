@@ -12,7 +12,14 @@
 
 // number of different keys to count
 #define KEYS_COUNT 256
-#define KEY_MAX_VALUE KEYS_COUNT - 1
+
+// we need at least KEYS_COUNT threads in total
+#define THREADS 128
+#define BLOCKS 20
+#define SIZE 130
+
+// HACK: parenthesis are VERY IMPORTANT
+#define KEY_MAX_VALUE (KEYS_COUNT - 1)
 
 #ifdef __CUDA_ARCH__
 #define syncthreads() __syncthreads()
@@ -56,7 +63,7 @@ inline void cudaPrintError(cudaError_t cudaerr, const char *file, int line)
  * Functions
  */
 
-__global__ void count_atomic(elem *array, size_t size, uint *counts, uint mask, size_t shift)
+__global__ void count_atomic(elem *array, size_t size, uint *counts, uint mask, size_t shift, size_t mask_size)
 {
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
@@ -66,12 +73,13 @@ __global__ void count_atomic(elem *array, size_t size, uint *counts, uint mask, 
     if (tid < KEYS_COUNT) {
         local_counts[threadIdx.x] = 0;
     }
+    /* printf("tid(%d) is here\n", tid); */
     syncthreads();
 
     for (size_t i = tid; i < size; i += stride) {
         /* debug("tid(%d): size=%ld stride=%d i=%ld\n", tid, size, stride, i); */
-        atomicAdd(&local_counts[(array[i] & mask) >> (8 * shift)], 1);
-        /* debug("tid(%d): local_counts[%u] = %d\n", tid, array[i] & mask, local_counts[array[i] & mask]); */
+        atomicAdd(&local_counts[(array[i] & mask) >> (mask_size * shift)], 1);
+        /* debug("tid(%d): local_counts[%u] = %d\n", tid, (array[i] & mask) >> (mask_size * shift), local_counts[(array[i] & mask) >> (mask_size * shift)]); */
     }
 
     /* __syncthreads(); if (tid == 0) print_array(local_counts, KEYS_COUNT, "local_counts"); */
@@ -79,8 +87,7 @@ __global__ void count_atomic(elem *array, size_t size, uint *counts, uint mask, 
     syncthreads();
 
     if (tid < KEYS_COUNT) {
-        /* debug("adding local_counts[%d]=%d to counts[%d]=%d\n", threadIdx.x, local_counts[threadIdx.x], threadIdx.x, */
-        /* counts[threadIdx.x]); */
+        /* debug("adding local_counts[%d]=%d to counts[%d]=%d\n", threadIdx.x, local_counts[threadIdx.x], threadIdx.x, counts[threadIdx.x]); */
         atomicAdd(&(counts[threadIdx.x]), local_counts[threadIdx.x]);
     } else {
         /* debug("%d did nothing\n", tid); */
@@ -96,7 +103,8 @@ __global__ void count_atomic(elem *array, size_t size, uint *counts, uint mask, 
  *     doi:10.1145/7902.7903
  *
  */
-__host__ uint *prefix_sum(uint *counts, size_t size, int blocks, int threads)
+ /*          = prefix_sum(      d_counts,  KEYS_COUNT,     blocks,     threads); */
+__host__ uint *prefix_sum(uint *d_counts, size_t size, int blocks, int threads)
 {
     uint *d_in;
     uint *d_out;
@@ -109,17 +117,15 @@ __host__ uint *prefix_sum(uint *counts, size_t size, int blocks, int threads)
     cudaErr(cudaMalloc((void **)&d_in, size * sizeof(uint)));
 
     // initialize in and out array to counts
-    cudaErr(cudaMemcpy(d_in, counts, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToDevice));
-    cudaErr(cudaMemcpy(d_out, counts, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToDevice));
+    cudaErr(cudaMemcpy(d_in, d_counts, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToDevice));
+    cudaErr(cudaMemcpy(d_out, d_counts, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToDevice));
 
     for (int j = 1; j <= floor(log2(size)); j += 1) {
         prefix_sum_kernel<<<blocks, threads>>>(d_in, d_out, j, size);
         cudaLastErr();
-
         /* cudaErr(cudaMemcpy(check, d_out, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToHost)); */
         /* print_array(check, size, "out array:"); */
 
-        // PERF: maybe we can avoid the copy somehow?
         // copy result back to input
         cudaErr(cudaMemcpy(d_in, d_out, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToDevice));
         // swap in and out
@@ -138,11 +144,13 @@ __host__ uint *prefix_sum(uint *counts, size_t size, int blocks, int threads)
 // TODO: maybe support ACTUALLY using multiple blocks
 __global__ void prefix_sum_kernel(uint *in, uint *out, uint j, size_t size)
 {
-    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
     // PERF: shift instead of pow(2, *)?
     // don't go out of bounds
     if (tid < size) {
+        /* debug("tid(%d): something\n", tid); */
+        /* printf("tid(%d) did something\n", tid); */
         if (tid >= __powf(2, j - 1)) {
             out[tid] += in[tid - (int)__powf(2, j - 1)];
             /* debug("out[%d] += %d\n", tid, in[tid - (int)__powf(2, j - 1)]); */
@@ -150,6 +158,11 @@ __global__ void prefix_sum_kernel(uint *in, uint *out, uint j, size_t size)
     }
 }
 
+__global__ void hello()
+{
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    debug("tid(%d): blockDim %d blockIdx %d threadIdx %d\n", tid, blockDim.x, blockIdx.x, threadIdx.x);
+}
 
 /* zero out a device array */
 __global__ void zero_array(uint *d_array, size_t size) {
@@ -164,10 +177,15 @@ __global__ void zero_array(uint *d_array, size_t size) {
 
 int main(void)
 {
-    int threads = 256;
-    int blocks = 2;
+    int threads = THREADS;
+    int blocks = BLOCKS;
+    size_t size = SIZE;
 
-    size_t size = 50;
+    if (threads * blocks < KEYS_COUNT) {
+        printf("We need at least KEYS_COUNT(=%d) threads in total.\n", KEYS_COUNT);
+        exit(-1);
+    }
+
     elem *unsorted = NULL;
     elem *output = NULL;
     uint *counts = NULL;
@@ -179,9 +197,25 @@ int main(void)
     elem *d_output = NULL;
 
     unsorted = (elem *)malloc(size * sizeof(elem));
+    if (unsorted == NULL) {/*{{{*/
+        printf("malloc failed at line: %d in file %s\n", __LINE__, __FILE__);
+        exit(-1);
+    }/*}}}*/
     counts = (uint *)malloc(KEYS_COUNT * sizeof(uint));
+    if (counts == NULL) {/*{{{*/
+        printf("malloc failed at line: %d in file %s\n", __LINE__, __FILE__);
+        exit(-1);
+    }/*}}}*/
     prefix_sums = (uint *)malloc(KEYS_COUNT * sizeof(uint));
+    if (prefix_sums == NULL) {/*{{{*/
+        printf("malloc failed at line: %d in file %s\n", __LINE__, __FILE__);
+        exit(-1);
+    }/*}}}*/
     output = (elem *)malloc(size * sizeof(elem));
+    if (output == NULL) {/*{{{*/
+        printf("malloc failed at line: %d in file %s\n", __LINE__, __FILE__);
+        exit(-1);
+    }/*}}}*/
 
     cudaErr(cudaMalloc((void **)&d_unsorted, size * sizeof(elem)));
     cudaErr(cudaMalloc((void **)&d_counts, KEYS_COUNT * sizeof(uint)));
@@ -189,15 +223,16 @@ int main(void)
 
     for (size_t i = 0; i < size; ++i) {
         /* unsorted[i] = rand() % (1 * KEY_MAX_VALUE) + KEY_MAX_VALUE; */
-        /* unsorted[i] = rand(); */
-        unsorted[i] = rand() % KEY_MAX_VALUE;
         /* unsorted[i] = rand() % 1000; */
+        /* unsorted[i] = rand(); */
+        /* unsorted[i] = rand() % KEY_MAX_VALUE; */
+        unsorted[i] = i;
 
         output[i] = -1337;
     }
-    unsorted[2] = 0;
-    unsorted[4] = 1;
-    unsorted[5] = 255;
+    /* unsorted[2] = 0; */
+    /* unsorted[4] = 1; */
+    /* unsorted[5] = 255; */
 
     /* for (int i = 0; i < KEYS_COUNT; ++i) { */
     /*     counts[i] = 0; */
@@ -211,24 +246,22 @@ int main(void)
 
     size_t elem_size = sizeof(elem) * 8;
     long unsigned iters = (long unsigned)((double)elem_size / log2(KEYS_COUNT));
-    size_t mask_s = elem_size / iters;
+    size_t mask_size = elem_size / iters;
     unsigned int mask = 0;
     unsigned int mask_shift = 0;
     /* unsigned int KEYS_COUNT = pow(2, 8); */
 
     for (size_t shift=0; shift < iters; ++shift) {
 
-        if (shift != 0)
-            exit(0);
         zero_array<<<blocks, threads>>>(d_counts, KEYS_COUNT);
         cudaLastErr();
 
-        debug("########################\n# ITERATION %lu OUT OF %lu #\n########################\n", shift+1, iters);
+        debug("##########################\n# ITERATION %2lu OUT OF %2lu #\n##########################\n", shift+1, iters);
         // keep a copy of the mask
         uint old_mask = mask;
 
         // create a mask of size mask_s
-        for (; mask_shift < mask_s * (shift + 1); mask_shift++) {
+        for (; mask_shift < mask_size * (shift + 1); mask_shift++) {
                 mask |= (1 << mask_shift);
         }
 
@@ -245,7 +278,7 @@ int main(void)
         /* print_array_bits(unsorted, size, "unsorted bits"); */
 
         // count frequencies
-        count_atomic<<<blocks, threads>>>(d_unsorted, size, d_counts, mask, shift);
+        count_atomic<<<blocks, threads>>>(d_unsorted, size, d_counts, mask, shift, mask_size);
         cudaLastErr();
 
         // copy counts back to host only to print them
@@ -253,7 +286,7 @@ int main(void)
         print_array(counts, KEYS_COUNT, "counts");
 
         // get prefix sums of counts
-        d_prefix_sums = prefix_sum(d_counts, KEYS_COUNT, 4, KEYS_COUNT / 4);
+        d_prefix_sums = prefix_sum(d_counts, KEYS_COUNT, blocks, threads);
 
         // copy prefix sums back to host because we need them
         cudaErr(cudaMemcpy(prefix_sums, d_prefix_sums, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToHost));
@@ -262,15 +295,31 @@ int main(void)
 
         /* move elements to sorted position */
         int offset = 0;
-        for (int j = (int)size - 1; j >= 0; --j) {
-            unsigned long masked_elem = (unsorted[j] & mask) >> (8 * shift);
+        prefix_sums[KEYS_COUNT - 1] = 0;
+        for (size_t j = 0; j < size; ++j) {
+            unsigned long masked_elem = (unsorted[j] & mask) >> (mask_size * shift);
+            
+            /* printf("elem %d\nmasked ", unsorted[j]); */
+            /* print_bits(masked_elem); */
 
-            offset = prefix_sums[masked_elem];
-            prefix_sums[masked_elem] += 1;
+            if (masked_elem != 0) {
+                offset = prefix_sums[masked_elem - 1];
+                /* debug("! offset = prefix_sums[%lu] = %d, elem = %d, masked = %lu\n", masked_elem - 1, offset, unsorted[j], masked_elem); */
+                prefix_sums[masked_elem - 1] += 1;
+                /* debug("n moved unsorted[%4lu]=%4d to output[%4d]\n", j, unsorted[j], offset); */
+            } else {
+                offset = prefix_sums[KEYS_COUNT - 1];
+                /* debug("0 offset = prefix_sums[%d] = %d, elem = %d, masked = %lu\n", KEYS_COUNT - 1, offset, unsorted[j], masked_elem); */
+                prefix_sums[KEYS_COUNT - 1] += 1;
+                /* debug("0 moved unsorted[%4lu]=%4d to output[%4d]\n", j, unsorted[j], offset); */
+            }
 
-            if (shift == 0)
-                debug("moved unsorted[%4d]=%4d to output[%4d]\n", j, unsorted[j], offset);
-            output[offset - 1] = unsorted[j];
+            /* if (offset > size) { */
+            /*     debug("OFFSET = %d mskelem = %lu\n", offset, masked_elem); */
+            /*     exit(-1); */
+            /* } */
+
+            output[offset] = unsorted[j];
         }
 
         print_array(output, size, "sorted");
@@ -279,44 +328,88 @@ int main(void)
         cudaErr(cudaMemcpy(d_unsorted, output, size * sizeof(elem), cudaMemcpyHostToDevice));
         cudaErr(cudaMemcpy(unsorted, output, size * sizeof(elem), cudaMemcpyHostToHost));
     }
+
+    /* free device memory */
+    puts("FREE DEVICE");
+    cudaErr(cudaFree((void*)d_unsorted));
+    cudaErr(cudaFree((void*)d_counts));
+    cudaErr(cudaFree((void*)d_prefix_sums));
+    cudaErr(cudaFree((void*)d_output));
+
+    /* free host memory */
+    puts("FREE HOST");
+    free(unsorted);
+    free(counts);
+    free(prefix_sums);
+    free(output);
+
+    puts("DONE");
 }
 
 /* trash code {{{ */
 
 /* nope */
-__global__ void move(elem *unsorted, size_t size, uint *prefix_sums, elem *output, uint mask, uint shift)
-{
-    int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    int stride = blockDim.x * gridDim.x;
-    int offset = 0;
-
+/* __global__ void move(elem *unsorted, size_t size, uint *prefix_sums, elem *output, uint mask, uint shift) */
+/* { */
+/*     int tid = blockDim.x * blockIdx.x + threadIdx.x; */
+/*     int stride = blockDim.x * gridDim.x; */
+/*     int offset = 0; */
+/*  */
     /*     __shared__ uint local_offsets[KEYS_COUNT]; */
-
+/*  */
     /* // offset is prefix sum of previous number, */
     /* // if there is no previous thread, use the last pos in the array, */
     /* // initializing it to zero */
     /* if (tid == 0) { */
     /*     prefix_sums[KEYS_COUNT - 1] = prefix_sums[1]; */
     /* } */
-
-    syncthreads();
-
-    // i is int, should it be size_t?
-    for (int i = size - tid - 1; i >= 0; i -= stride) {
-        if ((unsorted[i] & mask) >> (8 * shift) != 0) {
-            offset = atomicSub(&prefix_sums[(unsorted[i] & mask) >> (8 * shift)], 1);
-            debug("tid(%d) move unsorted[%d]=%d to output[%d]=%d\n", tid, i, unsorted[i], offset - 1, output[offset - 1]);
-            output[offset - 1] = unsorted[i];
-        }
-    }
-
-    syncthreads();
-
-
+/*  */
+/*     syncthreads(); */
+/*  */
+/*     // i is int, should it be size_t? */
+/*     for (int i = size - tid - 1; i >= 0; i -= stride) { */
+/*         if ((unsorted[i] & mask) >> (8 * shift) != 0) { */
+/*             offset = atomicSub(&prefix_sums[(unsorted[i] & mask) >> (8 * shift)], 1); */
+/*             debug("tid(%d) move unsorted[%d]=%d to output[%d]=%d\n", tid, i, unsorted[i], offset - 1, output[offset - 1]); */
+/*             output[offset - 1] = unsorted[i]; */
+/*         } */
+/*     } */
+/*  */
+/*     syncthreads(); */
+/*  */
+/*  */
     /* __syncthreads(); */
     /* if (tid == 0) print_array(local_counts, KEYS_COUNT, "local_counts"); */
-}
+/* } */
 
+/*         prefix_sums[KEYS_COUNT - 1] = 0; */
+/*  */
+/*         for (int j = (int)size - 1; j >= 0; --j) { */
+/*             unsigned long masked_elem = (unsorted[j] & mask) >> (mask_size * shift); */
+/*              */
+/*             printf("elem %d\nmasked ", unsorted[j]); */
+/*             print_bits(masked_elem); */
+/*  */
+/*             if (masked_elem != 0) { */
+/*                 offset = prefix_sums[masked_elem - 1]; */
+                /* debug("! offset = prefix_sums[%lu] = %d, elem = %d, masked = %lu\n", masked_elem - 1, offset, unsorted[j], masked_elem); */
+/*                 prefix_sums[masked_elem - 1] += 1; */
+/*             } else { */
+/*                 offset = prefix_sums[KEYS_COUNT - 1]; */
+                /* debug("0 offset = prefix_sums[%d] = %d, elem = %d, masked = %lu\n", KEYS_COUNT - 1, offset, unsorted[j], masked_elem); */
+/*                 prefix_sums[KEYS_COUNT - 1] += 1; */
+/*             } */
+/*  */
+            /* if (offset > size) { */
+            /*     debug("OFFSET = %d mskelem = %lu\n", offset, masked_elem); */
+            /*     exit(-1); */
+            /* } */
+/*  */
+/*             debug("moved unsorted[%4d]=%4d to output[%4d]\n", j, unsorted[j], offset); */
+/*             output[offset] = unsorted[j]; */
+/*         } */
+
+        /* prefix_sums[KEYS_COUNT - 1] = prefix_sums[0] - 1; */
 
 
 

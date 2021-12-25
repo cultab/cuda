@@ -1,5 +1,6 @@
 #include <stdio.h>
-#include <stdarg.h>
+#include <stdint.h>
+#include <unistd.h>
 
 #include "print.h"
 #include "types.h"
@@ -44,7 +45,7 @@ void print_array(uint *arr, size_t size, const char *name)
     printf("\n");
 }
 
-void print_compare_array(uint *a, uint *b, size_t size) {
+void print_compare_array(uint *a, unsigned int *b, size_t size) {
     for (size_t i = 0; i < size; ++i) {
         printf("%4u | %4u\n", a[i], b[i]);
     }
@@ -60,6 +61,15 @@ void print_array_bits(int *arr, size_t size, const char *name)
     printf("\n");
 }
 
+void print_array_bits(uint *arr, size_t size, const char *name)
+{
+    printf("%s:\n", name);
+    for (size_t i = 0; i < size; ++i) {
+        printf("[%3ld]=", i);
+        print_bits(arr[i]);
+    }
+    printf("\n");
+}
 void print_bits(int num) {
     unsigned int size = sizeof(unsigned int);
     unsigned int maxPow = 1<<(size*8-1);
