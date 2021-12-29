@@ -3,16 +3,14 @@
 
 #include <unistd.h>
 #include <stdint.h>
-#include "types.h"
+#include "types.cuh"
 
-#ifdef __CUDA_ARCH__
 __device__
-#endif
+__host__
 void print_array(int *, size_t, const char *);
 
-#ifdef __CUDA_ARCH__
 __device__
-#endif
+__host__
 void print_array(uint *, size_t, const char *);
 
 void print_bits(int);

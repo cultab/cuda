@@ -2,8 +2,8 @@
 #include <stdint.h>
 #include <unistd.h>
 
-#include "print.h"
-#include "types.h"
+#include "print.cuh"
+#include "types.cuh"
 
 // define restrict because it's not standard c++
 #ifdef __GNUC__
@@ -16,11 +16,8 @@
  * Print array, compiled for both host and device.
  */
 
-#ifdef __CUDA_ARCH__
 __device__
-#else
 __host__
-#endif
 void print_array(int *arr, size_t size, const char *name)
 {
     printf("%s:\n", name);
@@ -31,11 +28,8 @@ void print_array(int *arr, size_t size, const char *name)
 }
 
 
-#ifdef __CUDA_ARCH__
 __device__
-#else
 __host__
-#endif
 void print_array(uint *arr, size_t size, const char *name)
 {
     printf("%s:\n", name);

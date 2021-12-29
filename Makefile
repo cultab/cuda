@@ -7,6 +7,7 @@ OBJ = $(CUDA_SRC:.cu=.o)
 
 CC=nvcc
 NVCC_FLAGS=-arch=sm_61 -forward-unknown-to-host-compiler
+NVCC_COMPILE_ONLY_FLAGS=--device-c  # relocatable device code
 CCFLAGS=-Wall -Wextra -Wconversion
 
 all: options debug
@@ -29,12 +30,12 @@ options:
 	@echo "OBJ        = $(OBJ)"
 
 %.o: %.cu
-	$(CC) $(NVCC_FLAGS) $(CCFLAGS) -c $<
+	$(CC) $(NVCC_FLAGS) $(NVCC_COMPILE_ONLY_FLAGS)  $(CCFLAGS) -c $<
 
 # dependencies
-radix.o: print.h types.h
-print.o: print.h
-# types.o: types.h
+radix.o: print.cuh types.cuh
+print.o: print.cuh
+# types.o: types.cuh
 
 radix: $(OBJ) $(CUDA_SRC)
 	$(CC) -o $@ $(OBJ) $(NVCC_FLAGS) $(CCFLAGS) 
