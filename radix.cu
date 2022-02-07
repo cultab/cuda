@@ -11,13 +11,27 @@
  * Constant Definitions and Cuda weirdness
  */
 
-// number of different keys to count, must be power of 2
-#define KEYS_COUNT 256
+// number of different keys to count, must be 2^n where n is a power of 2
+// #define KEYS_COUNT 4096
+
+/*
+#define KEYS_COUNT 2    // 2 ^ 1
+#define KEYS_COUNT 4    // 2 ^ 2
+#define KEYS_COUNT 16   // 2 ^ 4 
+*/
+#define KEYS_COUNT 256  // 2 ^ 8, just right ?
+/*
+#define KEYS_COUNT 6536 // 2 ^ 16, way too big
+*/
 
 // we need at least KEYS_COUNT threads in total
 #define THREADS 128
-#define BLOCKS 20
-#define SIZE 10000000
+// multiple of 96 for 1050ti says nvvp
+#define BLOCKS (96 * 2)
+// size of unsorted array
+#define SIZE 400000000
+// #define SIZE 10
+// #define PRINT
 
 // HACK: parenthesis are VERY IMPORTANT
 #define KEY_MAX_VALUE (KEYS_COUNT - 1)
@@ -35,7 +49,8 @@
 __global__ void count_atomic(elem *, size_t, uint *, uint, size_t);
 __host__ uint *prefix_sum(uint *, size_t, int, int);
 __global__ void prefix_sum_kernel(uint *, uint *, uint, size_t);
-__global__ void move(uint *, elem *, uint, uint);
+__global__ void move(elem *, size_t, uint *, elem, uint, uint, size_t, size_t);
+__host__ void host_move(uint *, elem *, elem *, size_t, uint, ulong, ulong);
 
 /*
  * Macros
@@ -74,6 +89,7 @@ __global__ void count_atomic(elem *array, size_t size, uint *counts, uint mask, 
 
     __shared__ uint local_counts[KEYS_COUNT];
 
+    // zero out the block local shared memory
     for (size_t i = block_tid; i < KEYS_COUNT; i += block_stride) {
         local_counts[i] = 0;
         // debug("block(%d) zero'ed [%lu]\n", blockIdx.x, i);
@@ -96,6 +112,7 @@ __global__ void count_atomic(elem *array, size_t size, uint *counts, uint mask, 
 
     syncthreads();
 
+    // copy per block results back to global memory
     for (size_t i = block_tid; i < KEYS_COUNT; i += block_stride) {
         // debug("block(%d): adding local_counts[%lu]=%u to counts[%lu]=%u\n",blockIdx.x, i, local_counts[i], i, counts[i]);
         atomicAdd(&(counts[i]), local_counts[i]);
@@ -183,94 +200,197 @@ __global__ void zero_array(uint *d_array, size_t size) {
     }
 }
 
+/*
+ * Should be called with KEYS_COUNT many threads in total.
+ * Assuming 256 KEYS_COUNT and at least 32 threads per block so we get a full warp,
+ * 8 blocks with 32 threads each seems reasonable.
+ *
+ * Allows us to possibly not copy between host and device so much.
+ *
+ */
+__global__ void move(elem *d_unsorted, size_t size, uint *d_prefix, elem *d_sorted, uint mask, size_t shift, size_t mask_size) {
+    // use the thread id as a mask since we launch KEYS_COUNT many threads
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+
+
+    int offset = 0;
+
+    if (tid == 0) {
+        d_prefix[KEYS_COUNT - 1] = 0;
+    }
+    // no need to sync since tid == 0 only will write to this address
+
+    for (size_t j = 0; j < size; ++j) {
+        ulong masked_elem = (d_unsorted[j] & mask) >> (mask_size * shift);
+
+        // if this thread should handle this element
+        if (masked_elem == tid) {
+            if (masked_elem != 0) {
+                offset = d_prefix[masked_elem - 1];
+                d_prefix[masked_elem - 1] += 1;
+            } else {
+                offset = d_prefix[KEYS_COUNT - 1];
+                d_prefix[KEYS_COUNT - 1] += 1;
+            }
+            // debug("tid(%d) moved unsorted[%4lu]=%4d(%4d) to output[%4d]\n", j, d_unsorted[j], masked_elem, offset);
+            d_sorted[offset] = d_unsorted[j];
+        }
+    }
+}
+
+
+void host_move(uint *prefix_sums, elem *unsorted, elem *sorted, size_t size, uint mask, ulong mask_size, ulong shift) {
+
+    /* move elements to sorted position *//*{{{*/
+    int offset = 0;
+    prefix_sums[KEYS_COUNT - 1] = 0;
+    // prefix_sums[KEYS_COUNT - 1] = prefix_sums[0];
+    for (size_t j = 0; j < size; ++j) {
+        ulong masked_elem = (unsorted[j] & mask) >> (mask_size * shift);
+
+        if (masked_elem != 0) {
+            offset = prefix_sums[masked_elem - 1];
+            // debug("! offset = prefix_sums[%lu] = %d, elem = %d, masked = %lu\n", masked_elem - 1, offset, unsorted[j], masked_elem);
+            prefix_sums[masked_elem - 1] += 1;
+            // debug("n moved unsorted[%4lu]=%4d(%4d) to output[%4d]\n", j, unsorted[j], masked_elem, offset);
+        } else {
+            offset = prefix_sums[KEYS_COUNT - 1];
+            // debug("0 offset = prefix_sums[%d] = %d, elem = %d, masked = %lu\n", KEYS_COUNT - 1, offset, unsorted[j], masked_elem);
+            prefix_sums[KEYS_COUNT - 1] += 1;
+            // debug("0 moved unsorted[%4lu]=%4d(%4d) to output[%4d]\n", j, unsorted[j], masked_elem, offset);
+        }
+        sorted[offset] = unsorted[j];
+    }
+
+    // print_array(output, size, "sorted");
+    // print_array_bits(output, size, "sorted bits");
+
+    // if (shift == 0) {
+    //     exit(0);
+    // }}}}
+}
+
+
 int main(void)
 {
+    printf("Start!\n");
+    float time;
     int threads = THREADS;
     int blocks = BLOCKS;
     size_t size = SIZE;
 
+    // needed for current prefix_sum implementation
     if (threads * blocks < KEYS_COUNT) {
-        printf("We need at least KEYS_COUNT(=%d) threads in total.\n", KEYS_COUNT);
+        fprintf(stderr, "We need at least KEYS_COUNT(=%d) threads in total. We have %d..\n", KEYS_COUNT, threads * blocks);
         exit(-1);
     }
 
-    elem *unsorted = NULL; // {31, 22, 9, 19, 25, 15, 2, 12, 9, 5};
-    elem *output = NULL;
+    cudaEvent_t start, stop;
+
+    cudaErr(cudaEventCreate(&start));
+    cudaErr(cudaEventCreate(&stop));
+
+    elem *unsorted = NULL;
+    elem *sorted = NULL;
     uint *counts = NULL;
     uint *prefix_sums = NULL;
 
     elem *d_unsorted = NULL;
     uint *d_counts = NULL;
     uint *d_prefix_sums = NULL;
-    elem *d_output = NULL;
+    elem *d_sorted = NULL;
 
+    printf("Allocating memory for unsorted.\n");
     unsorted = (elem *)malloc(size * sizeof(elem));
     if (unsorted == NULL) {/*{{{*/
         printf("malloc failed at line: %d in file %s\n", __LINE__, __FILE__);
         exit(-1);
     }/*}}}*/
+    printf("Allocating memory for counts.\n");
     counts = (uint *)malloc(KEYS_COUNT * sizeof(uint));
     if (counts == NULL) {/*{{{*/
         printf("malloc failed at line: %d in file %s\n", __LINE__, __FILE__);
         exit(-1);
     }/*}}}*/
+    printf("Allocating memory for prefix_sums.\n");
     prefix_sums = (uint *)malloc(KEYS_COUNT * sizeof(uint));
     if (prefix_sums == NULL) {/*{{{*/
         printf("malloc failed at line: %d in file %s\n", __LINE__, __FILE__);
         exit(-1);
     }/*}}}*/
-    output = (elem *)malloc(size * sizeof(elem));
-    if (output == NULL) {/*{{{*/
+    printf("Allocating memory for sorted.\n");
+    sorted = (elem *)malloc(size * sizeof(elem));
+    if (sorted == NULL) {/*{{{*/
         printf("malloc failed at line: %d in file %s\n", __LINE__, __FILE__);
         exit(-1);
     }/*}}}*/
 
-    cudaErr(cudaMalloc((void **)&d_unsorted, size * sizeof(elem)));
-    cudaErr(cudaMalloc((void **)&d_counts, KEYS_COUNT * sizeof(uint)));
-    cudaErr(cudaMalloc((void **)&d_output, size * sizeof(elem)));
 
+    printf("Allocating memory for d_unsorted.\n");
+    cudaErr(cudaMalloc((void **)&d_unsorted, size * sizeof(elem)));
+    printf("Allocating memory for d_counts.\n");
+    cudaErr(cudaMalloc((void **)&d_counts, KEYS_COUNT * sizeof(uint)));
+    printf("Allocating memory for d_sorted.\n");
+    cudaErr(cudaMalloc((void **)&d_sorted, size * sizeof(elem)));
+
+    printf("Generating input array.\n");
     for (size_t i = 0; i < size; ++i) {
+        unsorted[i] = rand() % INT32_MAX;
         // unsorted[i] = rand() % (1 * KEY_MAX_VALUE) + KEY_MAX_VALUE;
         // unsorted[i] = rand() % 1000;
         // unsorted[i] = rand();
-        unsorted[i] = rand() % 10000;
+        // unsorted[i] = rand() % 10000;
         // unsorted[i] = rand() % KEY_MAX_VALUE;
-        // unsorted[i] = i;
+        // unsorted[i] = size - i;
 
-        output[i] = -1337;
+        sorted[i] = -1337;
     }
-    // unsorted[2] = 0;
-    // unsorted[4] = 1;
-    // unsorted[5] = 255;
-
-    // for (int i = 0; i < KEYS_COUNT; ++i) {
-        // counts[i] = 0;
-    // }
 
     // move array to device
     cudaErr(cudaMemcpy(d_unsorted, unsorted, size * sizeof(elem), cudaMemcpyHostToDevice));
 
     // for testing, to make sure the values change
-    cudaErr(cudaMemcpy(d_output, output, size * sizeof(elem), cudaMemcpyHostToDevice));
+    // cudaErr(cudaMemcpy(d_output, output, size * sizeof(elem), cudaMemcpyHostToDevice));
 
-    size_t elem_size = sizeof(elem) * 8;
-    long unsigned iters = (long unsigned)((double)elem_size / log2(KEYS_COUNT));
-    size_t mask_size = elem_size / iters;
-    unsigned int mask = 0;
-    unsigned int mask_shift = 0;
-    // unsigned int KEYS_COUNT = pow(2, 8);
+    // size of elem in bits
+    size_t elem_bit_size = sizeof(elem) * 8;
+    // number of iterations needed to sort based on all bits
+    ulong iters = (ulong)((double)elem_bit_size / log2(KEYS_COUNT));
+    // size of the mask used to extract a key from an elem
+    size_t mask_size = elem_bit_size / iters;
 
-        print_array(unsorted, size, "unsorted");
+    uint mask = 0;
+    uint mask_shift = 0;
+
+    printf("KEYS_COUNT=%d\n", KEYS_COUNT);
+    printf("elem_size=%lu\n", elem_bit_size);
+    printf("iters=%lu\n", iters);
+    printf("mask_size=%lu\n", mask_size);
+
+    // check if KEYS_COUNT is correctly set
+    if (mask_size * iters != elem_bit_size) {
+        fprintf(stderr, "Bad KEYS_COUNT=%d value, elem_size=%lu is not integer "
+            "divisible into iters=%lu many parts.\n", KEYS_COUNT, elem_bit_size, iters);
+        exit(-1);
+    }
+
+    // print_array(unsorted, size, "unsorted");
+
+    // record start time
+    cudaEventRecord(start);
+
     for (size_t shift=0; shift < iters; ++shift) {
 
+        printf("In device zero_array()\n");
         zero_array<<<blocks, threads>>>(d_counts, KEYS_COUNT);
         cudaLastErr();
+        printf("Out of device zero_array()\n");
 
         debug("##########################\n# ITERATION %2lu OUT OF %2lu #\n##########################\n", shift+1, iters);
         // keep a copy of the mask
         uint old_mask = mask;
 
-        // create a mask of size mask_s
+        // create a mask of size mask_size shifted appropriately
         for (; mask_shift < mask_size * (shift + 1); mask_shift++) {
                 mask |= (1 << mask_shift);
         }
@@ -281,94 +401,73 @@ int main(void)
             mask ^= old_mask;
         }
 
-        // debug("mask:\n");
-        // print_bits(mask);
+        debug("mask:\n");
+        print_bits(mask);
 
         // print_array(unsorted, size, "unsorted");
         // print_array_bits(unsorted, size, "unsorted bits");
 
+        printf("In device count_atomic()\n");
         // count frequencies
         count_atomic<<<blocks, threads>>>(d_unsorted, size, d_counts, mask, shift, mask_size);
         cudaLastErr();
+        printf("Out of device zero_array()\n");
 
         // copy counts back to host only to print them
         // cudaErr(cudaMemcpy(counts, d_counts, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToHost));
         // print_array(counts, KEYS_COUNT, "counts");
 
+        printf("In prefix_sum()\n");
         // get prefix sums of counts
         d_prefix_sums = prefix_sum(d_counts, KEYS_COUNT, blocks, threads);
+        printf("Out of prefix_sum()\n");
 
-        // copy prefix sums back to host because we need them
+        // copy prefix sums back to host because we *might* need them
         cudaErr(cudaMemcpy(prefix_sums, d_prefix_sums, KEYS_COUNT * sizeof(uint), cudaMemcpyDeviceToHost));
         // print_array(prefix_sums, KEYS_COUNT, "prefix_sum");
         // print_compare_array(counts, prefix_sums, KEYS_COUNT);
 
-        /* move elements to sorted position */
-        int offset = 0;
-        // std::set<int> offsets_used;
-        prefix_sums[KEYS_COUNT - 1] = 0;
-        // prefix_sums[KEYS_COUNT - 1] = prefix_sums[0];
-        for (size_t j = 0; j < size; ++j) {
-            unsigned long masked_elem = (unsorted[j] & mask) >> (mask_size * shift);
-            // print_array(prefix_sums, KEYS_COUNT, "offsets");
-            
-            // printf("elem %d\nmasked ", unsorted[j]);
-            // print_bits(masked_elem);
+        printf("In host move()\n");
+        host_move(prefix_sums, unsorted, sorted, size, mask, mask_size, shift);
+        printf("Out host of move()\n");
+        cudaErr(cudaMemcpy(d_unsorted, sorted, size * sizeof(elem), cudaMemcpyHostToDevice));
+        memcpy(unsorted, sorted, size * sizeof(elem));
 
-            if (masked_elem != 0) {
-                offset = prefix_sums[masked_elem - 1];
-                // debug("! offset = prefix_sums[%lu] = %d, elem = %d, masked = %lu\n", masked_elem - 1, offset, unsorted[j], masked_elem);
-                prefix_sums[masked_elem - 1] += 1;
-                // debug("n moved unsorted[%4lu]=%4d(%4d) to output[%4d]\n", j, unsorted[j], masked_elem, offset);
-            } else {
-                offset = prefix_sums[KEYS_COUNT - 1];
-                // debug("0 offset = prefix_sums[%d] = %d, elem = %d, masked = %lu\n", KEYS_COUNT - 1, offset, unsorted[j], masked_elem);
-                prefix_sums[KEYS_COUNT - 1] += 1;
-                // debug("0 moved unsorted[%4lu]=%4d(%4d) to output[%4d]\n", j, unsorted[j], masked_elem, offset);
-            }
-            // if (unsorted[j] == 526 || unsorted[j] == 771) {
-            // if (offset == 99 || offset == 71) {
-            //     debug("moved unsorted[%4lu]=%4d to output[%4d]\n", j, unsorted[j], offset);
-            //     debug("offset of masked %d\n", masked_elem);
-            //     print_bits(unsorted[j]);
-            // }
+        // printf("In device move()\n");
+        // move<<<8, 32>>>(d_unsorted, size, d_prefix_sums, d_sorted, mask, shift, mask_size);
+        // cudaLastErr();
+        // printf("Out of device move()\n");
+        // cudaErr(cudaMemcpy(d_unsorted, d_sorted, size * sizeof(elem), cudaMemcpyDeviceToDevice));
 
-            // if (offset > size) {
-                // debug("OFFSET = %d mskelem = %lu\n", offset, masked_elem);
-                // exit(-1);
-            // }
+        // cudaErr(cudaMemcpy(unsorted, d_sorted, size * sizeof(elem), cudaMemcpyDeviceToHost));
 
-            // if (offsets_used.find(offset) != offsets_used.end()) {
-            //     debug("we fucked up with offset %d @ %d\n", offset, masked_elem);
-            // }
-            // offsets_used.insert(offset);
-            output[offset] = unsorted[j];
-        }
-        // offsets_used.clear();
-
-        print_array(output, size, "sorted");
-        // print_array_bits(output, size, "sorted bits");
-
-        // if (shift == 0) {
-        //     exit(0);
-        // }
-        cudaErr(cudaMemcpy(d_unsorted, output, size * sizeof(elem), cudaMemcpyHostToDevice));
-        cudaErr(cudaMemcpy(unsorted, output, size * sizeof(elem), cudaMemcpyHostToHost));
+        // print_array(sorted, size, "sorted");
     }
+    // cudaErr(cudaMemcpy(sorted, d_sorted, size * sizeof(elem), cudaMemcpyDeviceToHost));
+
+    // record stop time
+    cudaErr(cudaEventRecord(stop));
+
+    cudaEventElapsedTime(&time, start, stop);
+
+    printf("Finished sorting in %.2f ms!\n", time);
+    #ifdef PRINT
+    print_array(sorted, size, "sorted");
+    #endif
 
     /* free device memory */
-    puts("FREE DEVICE");
+    puts("Free device memory.");
     cudaErr(cudaFree((void*)d_unsorted));
     cudaErr(cudaFree((void*)d_counts));
     cudaErr(cudaFree((void*)d_prefix_sums));
-    cudaErr(cudaFree((void*)d_output));
+    cudaErr(cudaFree((void*)d_sorted));
 
     /* free host memory */
-    puts("FREE HOST");
+    puts("Free host memory.");
     free(unsorted);
     free(counts);
     free(prefix_sums);
-    free(output);
+    free(sorted);
 
     puts("DONE");
 }
@@ -412,7 +511,7 @@ int main(void)
 /*         prefix_sums[KEYS_COUNT - 1] = 0; */
 /*  */
 /*         for (int j = (int)size - 1; j >= 0; --j) { */
-/*             unsigned long masked_elem = (unsorted[j] & mask) >> (mask_size * shift); */
+/*             ulong masked_elem = (unsorted[j] & mask) >> (mask_size * shift); */
 /*              */
 /*             printf("elem %d\nmasked ", unsorted[j]); */
 /*             print_bits(masked_elem); */
@@ -443,7 +542,7 @@ int main(void)
 // }}}
 
 /* commented  out code {{{*/
-/* __global__ void move(int *array, int size, int *prefix, int *output, unsigned int mask) { */
+/* __global__ void move(int *array, int size, int *prefix, int *output, uint mask) { */
 /*         int tid = threadIdx.x; */
 /*         int offset = 0; */
 /*  */
