@@ -123,7 +123,9 @@ int main(void)
         // sorted[i] = -1337;
     }
 
-    // print_array(unsorted, size, "unsorted");
+    #ifdef DEBUG
+    print_array(unsorted, size, "unsorted");
+    #endif
 
 
     cudaErr(cudaMemcpy(d_unsorted, unsorted, size * sizeof(elem), cudaMemcpyHostToDevice));
@@ -138,8 +140,11 @@ int main(void)
             // bitonic_step<<<blocks, threads>>>(d_unsorted, size, k, j);
             bitonic_step<<<1, 1>>>(d_unsorted, size, k, j);
             cudaLastErr();
+
+            #ifdef DEBUG
             cudaErr(cudaMemcpy(sorted, d_unsorted, size * sizeof(elem), cudaMemcpyDeviceToHost));
             print_array(sorted, size, "step");
+            #endif
 
         }
     }
@@ -161,7 +166,9 @@ int main(void)
            "Including memcpy:      %f ms!\n", time, time_true);
 
 
-    // print_array(sorted, size, "sorted");
+    #ifdef DEBUG
+    print_array(sorted, size, "sorted");
+    #endif
 
 
     return 0;
