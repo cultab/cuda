@@ -4,40 +4,7 @@
 
 #include "types.h"
 #include "print.h"
-
-#define THREADS 128
-// multiple of 96 for 1050ti says nvvp
-#define BLOCKS (96 * 2)
-
-// #define SIZE 8
-// #define SIZE 2048
-#define SIZE 32768
-
-#ifdef __CUDA_ARCH__
-#define syncthreads() __syncthreads()
-#else
-#define syncthreads()
-#endif
-
-inline void cudaPrintError(cudaError_t cudaerr, const char *file, int line)
-{
-    if (cudaerr != cudaSuccess) {
-        fprintf(stderr, "CUDA error: \"%s\" in file %s at line %d.\n", cudaGetErrorString(cudaerr), file, line);
-        exit(cudaerr);
-    }
-}
-
-#define cudaErr(ans)                                                                                                   \
-    do {                                                                                                               \
-        cudaPrintError((ans), __FILE__, __LINE__);                                                                     \
-    } while (0)
-
-#define cudaLastErr()                                                                                                  \
-    do {                                                                                                               \
-        cudaError_t cudaerr = cudaDeviceSynchronize();                                                                 \
-        cudaPrintError(cudaerr, __FILE__, __LINE__);                                                                   \
-    } while (0)
-
+#include "helpers.h"
 
 __global__ void bitonic_step(elem* d_arr, size_t size, int k, int j)
 {
@@ -64,112 +31,77 @@ __global__ void bitonic_step(elem* d_arr, size_t size, int k, int j)
                 tmp = d_arr[i];
                 d_arr[i] = d_arr[ij];
                 d_arr[ij] = tmp;
-                debug("\t\t\tyes! because v = %d\n", v == 0);
+                // debug("\t\t\tyes! because v = %d\n", v == 0);
             }
         }
     }
 }
 
-int not_main(void)
+struct Result bitonic_sort(elem *unsorted, size_t size, int threads, int blocks)
 {
-    int threads = THREADS;
-    int blocks = BLOCKS;
-    size_t size = SIZE;
 
     elem *sorted = NULL;
-    elem *unsorted = NULL;
 
     elem *d_sorted = NULL;
     elem *d_unsorted = NULL;
 
     // _true will also record the time to copy the data back and forth
-    float time, time_true;
-    cudaEvent_t start, stop, start_true, stop_true;
+    float time;
+    cudaEvent_t start, stop;
 
     cudaErr(cudaEventCreate(&start));
     cudaErr(cudaEventCreate(&stop));
-    cudaErr(cudaEventCreate(&start_true));
-    cudaErr(cudaEventCreate(&stop_true));
 
-    printf("Allocating memory for unsorted.\n");
-    unsorted = (elem *)malloc(size * sizeof(elem));
-    if (unsorted == NULL) {/*{{{*/
-        printf("malloc failed at line: %d in file %s\n", __LINE__, __FILE__);
-        exit(-1);
-    }/*}}}*/
-
-    printf("Allocating memory for sorted.\n");
+    printf("Allocating memory for sorted..\n");
     sorted = (elem *)malloc(size * sizeof(elem));
     if (sorted == NULL) {/*{{{*/
         printf("malloc failed at line: %d in file %s\n", __LINE__, __FILE__);
         exit(-1);
     }/*}}}*/
 
-    printf("Allocating memory for d_unsorted.\n");
+    printf("Allocating memory for d_unsorted..\n");
     cudaErr(cudaMalloc((void **)&d_unsorted, size * sizeof(elem)));
-    printf("Allocating memory for d_sorted.\n");
+    printf("Allocating memory for d_sorted..\n");
     cudaErr(cudaMalloc((void **)&d_sorted, size * sizeof(elem)));
 
-    printf("Generating input array.\n");
-    for (size_t i = 0; i < size; ++i) {
-        // unsorted[i] = rand() % INT32_MAX;
-        // unsorted[i] = rand() % (1 * KEY_MAX_VALUE) + KEY_MAX_VALUE;
-        unsorted[i] = rand() % 10;
-        // unsorted[i] = rand();
-        // unsorted[i] = rand() % 10000;
-        // unsorted[i] = rand() % KEY_MAX_VALUE;
-        // unsorted[i] = size - i;
-
-        // sorted[i] = -1337;
-    }
-
-    #ifdef DEBUG
-    print_array(unsorted, size, "unsorted");
-    #endif
-
-
-    cudaErr(cudaMemcpy(d_unsorted, unsorted, size * sizeof(elem), cudaMemcpyHostToDevice));
-
-    cudaErr(cudaEventRecord(start_true));
     cudaErr(cudaEventRecord(start));
 
-    for (int k = 2; k <= size; k *= 2) { // k is doubled every iteration
+    printf("Sorting..\n");
+
+    // copy unsorted to device
+    cudaErr(cudaMemcpy(d_unsorted, unsorted, size * sizeof(elem), cudaMemcpyHostToDevice));
+
+    for (int k = 2; k <= (int)size; k *= 2) { // k is doubled every iteration
         debug("k = %d\n", k);
         for (int j = k/2; j > 0; j /= 2) { // j is halved at every iteration, with truncation of fractional parts
             debug("\tj = %d\n", j);
-            // bitonic_step<<<blocks, threads>>>(d_unsorted, size, k, j);
-            bitonic_step<<<1, 1>>>(d_unsorted, size, k, j);
-            cudaLastErr();
+            bitonic_step<<<blocks, threads>>>(d_unsorted, size, k, j);
 
-            #ifdef DEBUG
-            cudaErr(cudaMemcpy(sorted, d_unsorted, size * sizeof(elem), cudaMemcpyDeviceToHost));
-            print_array(sorted, size, "step");
-            #endif
+            // #ifdef DEBUG
+            // cudaErr(cudaMemcpy(sorted, d_unsorted, size * sizeof(elem), cudaMemcpyDeviceToHost));
+            // print_array(sorted, size, "step");
+            // #endif
 
         }
     }
+    cudaLastErr();
 
-    cudaErr(cudaEventRecord(stop));
-
-    // cudaErr(cudaMemcpy(sorted, d_sorted, size * sizeof(elem), cudaMemcpyDeviceToHost));
     cudaErr(cudaMemcpy(sorted, d_unsorted, size * sizeof(elem), cudaMemcpyDeviceToHost));
 
-    cudaErr(cudaEventRecord(stop_true));
 
+    cudaErr(cudaEventRecord(stop));
     cudaErr(cudaEventSynchronize(stop));
-    cudaErr(cudaEventSynchronize(stop_true));
 
-    cudaEventElapsedTime(&time, start, stop);
-    cudaEventElapsedTime(&time_true, start_true, stop_true);
+    cudaErr(cudaEventElapsedTime(&time, start, stop));
 
-    printf("Kernel execution time: %f ms!\n"
-           "Including memcpy:      %f ms!\n", time, time_true);
+    /* free device memory */
+    printf("Freeing device memory..\n");
+    cudaErr(cudaFree((void*)d_unsorted));
+    cudaErr(cudaFree((void*)d_sorted));
 
+    debug("DONE\n");
 
-    #ifdef DEBUG
-    print_array(sorted, size, "sorted");
-    #endif
+    Result res = { .sorted = sorted, .time = time };
 
-
-    return 0;
+    return res;
 }

@@ -2,79 +2,158 @@
 
 #include "print.h"
 #include "types.h"
+#include "counting.h"
+#include "bitonic.h"
 #include "radix.h"
 
-#define THREADS 128
-// multiple of 96 for 1050ti says nvvp
-#define BLOCKS (96 * 2)
-// size of unsorted array
-#define SIZE 250000000 // 2Gbs worth of elems
-// #define SIZE 10
 // #define PRINT
 
-#define MAX_VALUE 1024
+/*
+ * Default values
+ */
 
-int main(void)
+static int THREADS = 256;
+
+// multiple of 96 for 1050ti says nvvp
+static int BLOCKS = (96 * 16);
+
+// size of unsorted array
+// static int SIZE = 16777216; // 2^24
+// static int SIZE = 250000000; // 2Gbs worth of elems
+// static int SIZE = 268435456; // about the same
+// static int SIZE = 65536; // 2^16
+static int SIZE = 100;
+
+// max value for couting sort
+static int MAX_VALUE = 1024;
+
+// sorting method
+enum Method {
+    RADIX = 0,
+    COUNTING = 1,
+    BITONIC = 2,
+};
+
+static int METHOD = 0;
+
+#define HELPSTRING                                                                                                     \
+    "Not enough arguments!\n"                                                                                          \
+    "./sort METHOD <size> <threads> <blocks> [max value]\n"                                                            \
+    "\n"                                                                                                               \
+    "METHOD is one of three:\n"                                                                                        \
+    "\t 0 --> Radix sort\n"                                                                                            \
+    "\t 1 --> Counting sort\n"                                                                                         \
+    "\t 2 --> Bitonic sort\n"                                                                                          \
+    "\n"                                                                                                               \
+    "Giving 0 instead of <size> <threads> or <blocks> uses their default values.\n"                                    \
+    "\n"                                                                                                               \
+    "Counting sort also requires the extra argument [max value].\n"
+
+int main(int argc, char *argv[])
 {
+    int tmp;
+
+    if (argc < 5) {
+        fprintf(stderr, "%s", HELPSTRING);
+        exit(-1);
+    }
+
+    // parse arguments
+    tmp = atoi(argv[1]);
+    if (tmp != 0)
+        METHOD = tmp;
+    tmp = atoi(argv[2]);
+    if (tmp != 0)
+        SIZE = tmp;
+    tmp = atoi(argv[3]);
+        THREADS = tmp;
+    tmp = atoi(argv[4]);
+        BLOCKS = tmp;
+
+    // get extra argument if required
+    if (METHOD == COUNTING) {
+        if (argc < 6) {
+            fprintf(stderr, "%s", HELPSTRING);
+            exit(-1);
+        } else {
+            tmp = atoi(argv[5]);
+            if (tmp != 0)
+                MAX_VALUE = tmp;
+        }
+    }
+
 
     // check for GPUs
     int gpus;
     cudaGetDeviceCount(&gpus);
     if (gpus < 1) {
         fprintf(stderr, "Need at least one GPU\n");
-        exit(0);
+        exit(-1);
     }
 
     // print device info (assuming exactly one device)
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, 0);
-    printf("Device Number: %d\n", 0);
-    printf("\tDevice name: %s\n", prop.name);
-    printf("\tMemory Clock Rate (KHz): %d\n", prop.memoryClockRate);
-    printf("\tMemory Bus Width (bits): %d\n", prop.memoryBusWidth);
-    printf("\tPeak Memory Bandwidth (GB/s): %f\n\n", 2.0*prop.memoryClockRate*((float)prop.memoryBusWidth/8)/1.0e6);
+    printf("Device name: %s\n", prop.name);
+    printf("Memory Clock Rate (KHz): %d\n", prop.memoryClockRate);
+    printf("Memory Bus Width (bits): %d\n", prop.memoryBusWidth);
+    printf("Peak Memory Bandwidth (GB/s): %f\n\n", 2.0*prop.memoryClockRate*((float)prop.memoryBusWidth/8)/1.0e6);
 
     elem *unsorted = NULL;
-    elem *sorted = NULL;
-    elem *sorted2 = NULL;
+    // elem *sorted2 = NULL;
     size_t size = SIZE;
     int threads = THREADS;
     int blocks = BLOCKS;
 
-    printf("Allocating memory for unsorted.\n");
+    printf("Allocating memory for unsorted..\n");
     unsorted = (elem *)malloc(size * sizeof(elem));
     if (unsorted == NULL) {/*{{{*/
         printf("malloc failed at line: %d in file %s\n", __LINE__, __FILE__);
         exit(-1);
     }/*}}}*/
 
-    printf("Generating input array.\n");
+    printf("Generating input array..\n");
     for (size_t i = 0; i < size; ++i) {
-        // unsorted[i] = rand() % INT32_MAX;
-        // unsorted[i] = rand() % (1 * KEY_MAX_VALUE) + KEY_MAX_VALUE;
-        // unsorted[i] = rand() % 10;
         unsorted[i] = rand() % MAX_VALUE;
-        // unsorted[i] = rand() % 10000;
-        // unsorted[i] = rand() % KEY_MAX_VALUE;
-        // unsorted[i] = size - i;
     }
-    unsorted[3] = 0;
 
     #ifdef PRINT
-    print_array(unsorted, size, "unsorted");
+    if (size <= 100)
+        print_array(unsorted, size, "unsorted");
     #endif
 
-    // sorted = radix_sort(unsorted, size, threads, blocks);
-    sorted = counting_sort(unsorted, size, threads, blocks, MAX_VALUE);
+    Result result;
+
+    switch (METHOD) {
+    case RADIX:
+        fprintf(stderr, "Using Radix sort!\n");
+        result = radix_sort(unsorted, size, threads, blocks);
+        break;
+    case COUNTING:
+        fprintf(stderr, "Using Counting sort!\n");
+        result = counting_sort(unsorted, size, threads, blocks, MAX_VALUE);
+        break;
+    case BITONIC:
+        fprintf(stderr, "Using Bitonic sort!\n");
+        result = bitonic_sort(unsorted, size, threads, blocks);
+        break;
+    default:
+        fprintf(stderr, "No such method: %d\n", METHOD);
+        fprintf(stderr, "%s", HELPSTRING);
+        exit(-1);
+    }
 
     #ifdef PRINT
-    print_array(sorted, size, "sorted");
+    if (size <= 100)
+        print_array(result.sorted, size, "sorted");
     #endif
+
+    printf("Finished sorting in %f ms\n", result.time);
 
     // sorted2 = radix_sort(unsorted, size, threads, blocks);
     // #ifdef PRINT
     // print_array(sorted2, size, "sorted");
     // #endif
     //
-    // print_compare_array((uint*)sorted, (uint*)sorted2, size);
+    // print_compare_array((unsigned int*)sorted, (unsigned int*)sorted2, size);
 }

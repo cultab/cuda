@@ -6,11 +6,6 @@
 #include "types.h"
 
 // define restrict because it's not standard c++
-#ifdef __GNUC__
-#define restrict __restrict__
-#else
-#define restrict
-#endif
 
 /*
  * Print array, compiled for both host and device.
@@ -30,7 +25,7 @@ void print_array(int *arr, size_t size, const char *name)
 
 __device__
 __host__
-void print_array(uint *arr, size_t size, const char *name)
+void print_array(unsigned int *arr, size_t size, const char *name)
 {
     printf("%s:\n", name);
     for (size_t i = 0; i < size; ++i) {
@@ -39,7 +34,7 @@ void print_array(uint *arr, size_t size, const char *name)
     printf("\n");
 }
 
-void print_compare_array(uint *a, unsigned int *b, size_t size) {
+void print_compare_array(unsigned int *a, unsigned int *b, size_t size) {
     for (size_t i = 0; i < size; ++i) {
         if (a[i] != b[i])
             printf("%4u | %4u\n", a[i], b[i]);
@@ -56,7 +51,7 @@ void print_array_bits(int *arr, size_t size, const char *name)
     printf("\n");
 }
 
-void print_array_bits(uint *arr, size_t size, const char *name)
+void print_array_bits(unsigned int *arr, size_t size, const char *name)
 {
     printf("%s:\n", name);
     for (size_t i = 0; i < size; ++i) {

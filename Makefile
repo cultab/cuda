@@ -1,22 +1,32 @@
 
 # TODO: architecture for each card
 
-# PROGRAMS = radix bitonic
-CUDA_SRC = main.cu radix.cu print.cu #bitonic.cu
+NAME = sort
+
+CUDA_SRC = main.cu \
+		   print.cu \
+		   radix.cu  \
+		   helpers.cu \
+		   bitonic.cu  \
+		   counting.cu  \
+		   prefix_sum.cu
+
 OBJ = $(CUDA_SRC:.cu=.o)
 # OBJ = print.o
 
 CC=nvcc
 NVCC_FLAGS=-arch=sm_61 -forward-unknown-to-host-compiler
 NVCC_COMPILE_ONLY_FLAGS=--device-c  # relocatable device code
-CCFLAGS=-Wall -Wextra -Wconversion -fopenmp
+CCFLAGS=-Wall -Wextra -Wconversion #-fopenmp
 
 #CCACHE := $(shell command -v ccache 2> /dev/null)
 
 # default to debugging build
 all: options debug
 
-release: clean main
+release: CCFLAGS += -O3
+release: clean
+	+make main
 
 profile: release
 	nvprof ./radix
@@ -38,16 +48,17 @@ options:
 
 # compile
 %.o: %.cu
-	$(CCACHE) $(CC) $(NVCC_FLAGS) $(NVCC_COMPILE_ONLY_FLAGS)  $(CCFLAGS) -c $<
+	$(CCACHE) $(CC) $(NVCC_FLAGS) $(NVCC_COMPILE_ONLY_FLAGS) $(CCFLAGS) -c $<
 
 # dependencies
-main.o: radix.h bitonic.h print.h types.h
-radix.o: print.h types.h
-# bitonic.o: print.h types.h
-print.o: print.h
+main.o: radix.h bitonic.h print.h types.h helpers.h
+radix.o: print.h types.h helpers.h
+bitonic.o: print.h types.h helpers.h
+print.o: print.h helpers.h
 
+# link
 main: $(OBJ)
-	$(CCACHE) $(CC) -o $@ $(OBJ) $(NVCC_FLAGS) $(CCFLAGS)
+	$(CCACHE) $(CC) $(OBJ) $(NVCC_FLAGS) $(CCFLAGS) -o $(NAME)
 
 clean:
 	rm -f main $(OBJ)
