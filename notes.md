@@ -1,3 +1,7 @@
+nvidia-470.94_3
+nvidia-libs-470.94_3
+nvidia-gtklibs-470.94_3
+nvidia-dkms-470.94_3
 
 ask about:
     radix sort MSB and LSB stability
@@ -12,5 +16,5 @@ todo in order of importance:
     * [ ] better prefix sum
     * [x] try parallelizing move step: tried and failed, need implementation from Fast 4-way...
     * [ ] benchmarking code and results
-    * [ ] bitonic sort :^)
+    * [x] bitonic sort :^)
     * [ ] comments

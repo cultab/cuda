@@ -2,8 +2,8 @@
 #include <stdint.h>
 #include <unistd.h>
 
-#include "print.cuh"
-#include "types.cuh"
+#include "print.h"
+#include "types.h"
 
 // define restrict because it's not standard c++
 #ifdef __GNUC__
@@ -41,7 +41,8 @@ void print_array(uint *arr, size_t size, const char *name)
 
 void print_compare_array(uint *a, unsigned int *b, size_t size) {
     for (size_t i = 0; i < size; ++i) {
-        printf("%4u | %4u\n", a[i], b[i]);
+        if (a[i] != b[i])
+            printf("%4u | %4u\n", a[i], b[i]);
     }
 }
 

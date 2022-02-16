@@ -1,9 +1,9 @@
-#ifndef H_PRINT
-#define H_PRINT
+#ifndef PRINT_H
+#define PRINT_H
 
 #include <unistd.h>
 #include <stdint.h>
-#include "types.cuh"
+#include "types.h"
 
 __device__
 __host__

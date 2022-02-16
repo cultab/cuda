@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#include "types.cuh"
-#include "print.cuh"
+#include "types.h"
+#include "print.h"
 
 #define THREADS 128
 // multiple of 96 for 1050ti says nvvp
@@ -70,7 +70,7 @@ __global__ void bitonic_step(elem* d_arr, size_t size, int k, int j)
     }
 }
 
-int main(void)
+int not_main(void)
 {
     int threads = THREADS;
     int blocks = BLOCKS;

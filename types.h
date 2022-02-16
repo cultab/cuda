@@ -1,5 +1,5 @@
-#ifndef H_TYPES
-#define H_TYPES
+#ifndef TYPES_H
+#define TYPES_H
 #include <stdint.h>
 
 // create a new type to easily change it later if need be
