@@ -3,29 +3,30 @@
 
 NAME = sort
 
-CUDA_SRC = main.cu \
-		   print.cu \
-		   radix.cu  \
-		   helpers.cu \
-		   bitonic.cu  \
-		   counting.cu  \
-		   prefix_sum.cu
+#cliff :) \ o
+CUDA_SRC = \
+	main.cu \
+	print.cu \
+	radix.cu  \
+	helpers.cu \
+	bitonic.cu  \
+	counting.cu  \
+	prefix_sum.cu
 
 OBJ = $(CUDA_SRC:.cu=.o)
-# OBJ = print.o
 
 CC=nvcc
 NVCC_FLAGS=-arch=sm_61 -forward-unknown-to-host-compiler
 NVCC_COMPILE_ONLY_FLAGS=--device-c  # relocatable device code
 CCFLAGS=-Wall -Wextra -Wconversion #-fopenmp
 
-#CCACHE := $(shell command -v ccache 2> /dev/null)
+CCACHE := $(shell command -v ccache 2> /dev/null)
 
 # default to debugging build
 all: options debug
 
 release: CCFLAGS += -O3
-release: clean
+release: options clean
 	+make main
 
 profile: release
