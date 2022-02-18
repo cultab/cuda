@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <time.h>
 
 #include "print.h"
 #include "types.h"
@@ -66,8 +67,10 @@ int main(int argc, char *argv[])
     if (tmp != 0)
         SIZE = tmp;
     tmp = atoi(argv[3]);
+    if (tmp != 0)
         THREADS = tmp;
     tmp = atoi(argv[4]);
+    if (tmp != 0)
         BLOCKS = tmp;
 
     // get extra argument if required
@@ -82,6 +85,8 @@ int main(int argc, char *argv[])
         }
     }
 
+    printf("Using %d threads in %d blocks\n", THREADS, BLOCKS);
+    printf("Array of size %d\n", SIZE);
 
     // check for GPUs
     int gpus;
@@ -112,9 +117,13 @@ int main(int argc, char *argv[])
         exit(-1);
     }/*}}}*/
 
+    // get seed for rand_r
+    srand(time(0));
+    unsigned int seed = rand();
+
     printf("Generating input array..\n");
     for (size_t i = 0; i < size; ++i) {
-        unsorted[i] = rand() % MAX_VALUE;
+        unsorted[i] = rand_r(&seed) % MAX_VALUE;
     }
 
     #ifdef PRINT

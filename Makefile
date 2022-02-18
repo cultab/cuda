@@ -17,8 +17,9 @@ OBJ = $(CUDA_SRC:.cu=.o)
 
 CC=nvcc
 NVCC_FLAGS=-arch=sm_61 -forward-unknown-to-host-compiler
-NVCC_COMPILE_ONLY_FLAGS=--device-c  # relocatable device code
 CCFLAGS=-Wall -Wextra -Wconversion #-fopenmp
+# relocatable device code
+NVCC_COMPILE_ONLY_FLAGS=--device-c
 
 CCACHE := $(shell command -v ccache 2> /dev/null)
 
