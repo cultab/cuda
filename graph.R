@@ -104,7 +104,7 @@ graph_blocks <- ggplot(data = data2,
         size = 7)
     ) +
     labs(y = "Time log(s)", x = "Size of Array",
-        color = "Sorting algorithm", "Block and Thread count vs GPUs")
+        color = "Sorting algorithm", title = "Block and Thread count vs GPUs")
 
 data21 <- raw_data[raw_data$max_value %in% c(256, -1), ]
 # data21 <- data21[data21$block_threads %in% c("16x16", "192x1024"),]
