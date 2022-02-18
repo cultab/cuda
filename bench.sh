@@ -10,7 +10,7 @@ echo '"method","size","threads","blocks","max_value", "time"' > results.csv
 # radix sort needs at least 256 threads in total
 method=$RADIX
 
-for blocks_threads in "16 16" "8 32" "16 64" "8 128" "96 128" "192 128" "1 256" "4 256" "1 1024" "4 1024"; do
+for blocks_threads in "16 16" "8 32" "16 64" "8 128" "96 128" "192 128" "1 256" "4 256" "1 1024" "4 1024" "192 1024"; do
     blocks=$(echo "$blocks_threads" | cut -d' ' -f1)
     threads=$(echo "$blocks_threads" | cut -d' ' -f2)
     for size in 10 100 1000 10000 100000 1000000 10000000 100000000; do
@@ -23,7 +23,7 @@ done
 # counting needs at least MAX_VALUE threads in total
 method=$COUNTING
 
-for blocks_threads in "16 16" "8 32" "16 64" "8 128" "96 128" "192 128" "1 256" "4 256" "1 1024" "4 1024"; do
+for blocks_threads in "16 16" "8 32" "16 64" "8 128" "96 128" "192 128" "1 256" "4 256" "1 1024" "4 1024" "192 1024"; do
     blocks=$(echo "$blocks_threads" | cut -d' ' -f1)
     threads=$(echo "$blocks_threads" | cut -d' ' -f2)
     for size in 10 100 1000 10000 100000 1000000 10000000 100000000; do
@@ -42,7 +42,7 @@ done
 # bitonic sort needs an array with a size that's a power of 2
 method=$BITONIC
 
-for blocks_threads in "16 16" "8 32" "16 64" "8 128" "96 128" "192 128" "1 256" "4 256" "1 1024" "4 1024"; do
+for blocks_threads in "16 16" "8 32" "16 64" "8 128" "96 128" "192 128" "1 256" "4 256" "1 1024" "4 1024" "192 1024"; do
     blocks=$(echo "$blocks_threads" | cut -d' ' -f1)
     threads=$(echo "$blocks_threads" | cut -d' ' -f2)
     for size in 16 128 1024 16384 131072 1048576 16777216; do
