@@ -14,7 +14,7 @@
 #define KEYS_COUNT 256  // 2 ^ 8, just right ?
 */
 /*
-#define KEYS_COUNT 6536 // 2 ^ 16, way too big
+#define KEYS_COUNT 65536 // 2 ^ 16, way too big
 */
 
 //  NOTE: parenthesis are VERY IMPORTANT

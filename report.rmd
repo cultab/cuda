@@ -1,0 +1,448 @@
+---
+title: "Παράλληλη Ταξινόμηση με χρήση CUDA"
+subtitle: |
+    | Πανεπιστήμιο Δυτικής Αττικής
+    | Τμήμα Μηχανικών Πληροφορικής και Υπολογιστών
+    | \includegraphics{./img/logo.jpg}
+    | Project Παράλληλου Υπολογισμού
+author: Ευάγγελος Κατσανδρής (cs171014@uniwa.gr)
+date: "`r Sys.setlocale('LC_TIME', 'el_GR.utf8'); format(Sys.time(), '%d %B, %Y')`"
+output: 
+    pdf_document:
+        template: eisvogel
+        highlight: kate
+        latex_engine: lualatex
+        number_sections: true
+        toc: false
+        citation_package: biblatex
+        pandoc_args: [ "--listings" ]
+bibliography: "bibliography.bib"
+biblatexoptions: "sorting=none"
+lang: "el"
+mainfont: 'Liberation Serif'
+sansfont: 'Liberation Sans'
+#mathfont: 'DejaVu Math TeX Gyre'
+monofont: 'Source Code Pro'
+fontsize: 11pt
+geometry: "margin=2.5cm"
+code-block-font-size: \footnotesize
+table-use-row-colors: true
+titlepage: true
+titlepage-rule-color: "123c64"
+titlepage-rule-height: 10
+caption-justification: centering
+toc-own-page: false
+header-includes:
+    \newfontfamily\greekfont{LiberationSerif}
+    \newfontfamily\greekfontsf{LiberationSerif}
+    \newfontfamily\greekfonttt{LiberationMono}
+    \usepackage{float}
+    \usepackage{subcaption}
+    \usepackage{pgf}
+    \usepackage{tikz}
+    \usepackage{tikzscale}
+    \usepackage{pgfplots}
+    \usepackage{chngcntr}
+    \counterwithin{figure}{section}
+    \pgfplotsset{compat=1.17}
+    \usepackage{svg}
+    \usepackage{multicol}
+    \definecolor{uniwalightblue}{RGB}{103, 173, 224}
+    \definecolor{uniwablue}{RGB}{18, 60, 100}
+    \definecolor{uniwaorange}{RGB}{230, 124, 23}
+    \usepackage{hyperref}
+    \hypersetup{
+        linkcolor  = black,
+        citecolor  = uniwaorange,
+        urlcolor   = uniwablue,
+        colorlinks = true,
+    }
+    \urlstyle{same}
+---
+
+<!-- \begin{figure}[H] -->
+<!-- \centering -->
+<!--     \begin{subfigure}[b]{\textwidth} -->
+<!--     \centering -->
+<!--         \includegraphics[width=\textwidth]{} -->
+<!--         \caption{} -->
+<!--     \end{subfigure} -->
+<!--     \begin{subfigure}[b]{\textwidth} -->
+<!--     \centering -->
+<!--         \includegraphics[width=\textwidth]{} -->
+<!--         \caption{} -->
+<!--     \end{subfigure} -->
+<!--     \caption{} -->
+<!--     \label{} -->
+<!-- \end{figure} -->
+
+<!--```{python, code=readLines("file"), results='asis', cache=USE_CACHE, cache.extra = tools::md5sum('./file')}
+``` -->
+
+<!-- ```{python, code=readLines("file"), eval=FALSE} -->
+<!-- ``` -->
+<!--  -->
+<!-- ## Αποτελέσματα -->
+<!--  -->
+<!-- ```{python, code=readLines("file"), echo=FALSE, results='asis', cache=USE_CACHE, cache.extra = tools::md5sum('./file')} -->
+<!-- ``` -->
+
+\newcommand\autonameref[1]{\autoref{#1}, {\nameref{#1}}}
+
+\renewcommand*{\lstlistlistingname}{Κατάλογος Κώδικα}
+
+\tableofcontents
+
+\listoffigures
+
+\lstlistoflistings
+
+\newpage
+
+# Εισαγωγή
+
+Σε αυτή την εργασία θα δούμε τρεις αλγορίθμους ταξινόμησης όπως και την υλοποίησή τους σε CUDA.
+Οι αλγόριθμοι που επιλέχθηκαν είναι το radix sort, counting sort και bitonic sort.
+
+# Αλγόριθμοι
+
+## Counting sort {#sec:algo-counting}
+
+Το counting sort βασίζεται στην ιδέα ότι ξέροντας το πλήθος κάθε αριθμού
+μια ακολουθίας (όπως και την διάταξή τους προφανώς) μπορούμε να ανακατασκευάσουμε την ακολουθία.
+Το βασικό πλεονέκτημά του είναι ότι η πολυπλοκότητα του είναι $O(m)$ όπου $m$ είναι ο το μέγεθος
+του συνόλου των τιμών της ακολουθίας. Ταυτόχρονα αυτό είναι και το βασικό του μειονέκτημα γιατί 
+(ανάλογα με την υλοποίηση) μεγαλύτερο σύνολο τιμών αυξάνει την μνήμη που θα πρέπει να χρησιμοποιήσουμε.
+
+## Radix sort {#sec:algo-radix}
+
+Το radix sort δεν είναι παρά μια επέκταση του counting sort ώστε να αποφευχθεί το κύριο
+μειονέκτημά του – το περιορισμένο εύρος τιμών της ακολουθίας. Ταξινομεί τα 
+στοιχεία μιας ακολουθίας ψηφίο-προς-ψηφίο.
+
+## Bitonic sort
+
+Δεν είναι εξαιρετικά αποδοτικός αλγόριθμος.
+Το bitonic sort βασίζεται στις ιδιότητες των διτονικών ακολουθιών.
+
+Ξεκινάει χτίζοντας αύξουσες και φθίνουσες υποακολουθίες εναλλάξ μήκους 2 στοιχείων.
+Συνεχίζει μέχρι να έχει μια αύξουσα και μια φθίνουσα ακολουθία εκμεταλεβόμενος το γεγονός ότι
+μια αύξουσα ακολουθία ακολουθούμενη από μια φθίνουσα φτιάχνουν μια διτονική ακολουθία, αυτό μέχρι
+να φτάσει σε μια διτονική ακολουθία.
+Σε αυτό το σημείο συγχωνεύει τις υποακολουθίες εκμεταλεβόμενος των ιδιοτήτων που οι
+διτονικές ακολουθίες έχουν σε σχέση με την ανισότητα των στοιχείων των υποακολουθειών τους.
+
+\newpage
+
+# Υλοποίηση
+
+Η υλοποίηση των αλγορίθμων έγινε σε CUDA (δοκιμάστηκε σε CUDA 10, 11.5 και 11.6).
+Το πρόγραμμα δέχεται commandline arguments για τον αλγόριθμο που θα τρέξει,
+το μέγεθος της ακολουθίας, τα blocks και threads.
+
+Έτσι παράγει μια τυχαία ακολουθία με το μέγεθος που δώθηκε.
+Αφού ταξινομήσει την ακολουθία επιστρέφει τον χρόνο που πήρε η ταξινόμηση
+χωρίς να συμπεριλαμβάνει την αρχική και την τελική μεταφορά δεδομένων
+από τον host στο device και το αντίστροφο.
+
+Παρακάτω βλέπουμε το help menu του προγράμματος:
+
+\begin{verbatim}
+./sort METHOD <size> <threads> <blocks> [max value]
+
+METHOD is one of three:
+    0 --> Radix sort
+    1 --> Couting sort
+    2 --> Bitonic sort
+\end{verbatim}
+
+Giving 0 instead of <size> <threads> or <blocks> uses their default values.
+
+Counting sort also requires the extra argument [max value].
+
+## Prefix sum {#sec:prefix-sum}
+
+Το prefix sum χρησιμοποιείται από το radix sort και το counting sort.
+Η υλοποίηση βασίζεται στον αλγόριθμο *All Partial Sums of an Array*
+που περιγράφετε από τους @parallel_algos στην σελίδα 1173.
+
+```{ .cpp caption="Prefix sum major step"}
+__host__ unsigned int *prefix_sum(unsigned int *d_counts, size_t size, int blocks, int threads)
+{
+    unsigned int *d_in;
+    unsigned int *d_out;
+    unsigned int *d_temp;
+
+    // unsigned int *check = NULL;
+    // check = (unsigned int *)malloc(size * sizeof(unsigned int));
+
+    cudaErr(cudaMalloc((void **)&d_out, size * sizeof(unsigned int)));
+    cudaErr(cudaMalloc((void **)&d_in, size * sizeof(unsigned int)));
+
+    /*
+     * Initialize in and out array to counts
+     * but shifted once to the right,
+     * the first element of each array is memset to 0.
+     * (so that we can set it from host code)
+     */
+    cudaMemset(d_in, 0, 1);
+    cudaMemset(d_out, 0, 1);
+    cudaErr(cudaMemcpy(d_in + 1, d_counts, (size - 1) * sizeof(unsigned int), cudaMemcpyDeviceToDevice));
+    cudaErr(cudaMemcpy(d_out + 1, d_counts, (size - 1) * sizeof(unsigned int), cudaMemcpyDeviceToDevice));
+
+    for (int j = 1; j <= floor(log2(size)); j += 1) {
+        prefix_sum_kernel<<<blocks, threads>>>(d_in, d_out, j, size);
+        cudaLastErr();
+
+        // copy result back to input
+        cudaErr(cudaMemcpy(d_in, d_out, size * sizeof(unsigned int), cudaMemcpyDeviceToDevice));
+        // swap in and out
+        d_temp = d_in;
+        d_in = d_out;
+        d_out = d_temp;
+    }
+
+    // free out
+    cudaErr(cudaFree(d_out));
+
+    // NOTE: return input array (yes it's backwards)
+    return d_in;
+}
+```
+
+```{ .cpp caption="Prefix sum minor step"}
+__global__ void prefix_sum_kernel(unsigned int *in, unsigned int *out, unsigned int j, size_t size)
+{
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // don't go out of bounds
+    if (tid < size) {
+        if (tid >= __powf(2, j - 1)) {
+            out[tid] += in[tid - (int)__powf(2, j - 1)];
+        }
+    }
+}
+```
+
+\newpage
+
+## Counting sort {#sec:impl-counting}
+
+Το πρώτο βήμα είναι η καταμέτρηση των τιμών της ακολουθίας, ουσιαστικά δημιουργούμε
+ένα ιστόγραμμα των τιμών.
+
+Όπως αναφέρθηκε στην \autonameref{sec:algo-counting} ο αλγόριθμος γνωρίζει
+το πλήθος των τιμών του συνόλου της ακολουθίας, έτσι φτιάχνουμε έναν πίνακα στην
+shared μνήμη δυναμικά, δίνοντας το μέγεθος του πίνακα σαν το τρίτο argument του
+kernel launch (`count<<<blocks,threads, sizeof(elem) * max_value>>`).
+
+Σε αυτό τον πίνακα το κάθε block καταγράφει το πλήθος των τιμών που συναντάει
+και στο τέλος ένα thread από κάθε block γράφει τα αποτελέσματα στην global μνήμη.
+
+``` { .cpp caption="Καταμέτρηση Τιμών"}
+__global__ void count(elem *array, size_t size, unsigned int *counts, elem max_value)
+{
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    int block_tid = threadIdx.x;
+    int block_stride = blockDim.x;
+
+    extern __shared__ unsigned int local_counts[];
+
+    // zero out the block local shared memory
+    for (size_t i = block_tid; i < max_value; i += block_stride) {
+        local_counts[i] = 0;
+    }
+    syncthreads();
+
+    for (size_t i = tid; i < size; i += stride) {
+        atomicAdd(&local_counts[array[i]], 1);
+    }
+
+    syncthreads();
+
+    // copy per block results back to global memory
+    for (size_t i = block_tid; i < max_value; i += block_stride) {
+        atomicAdd(&(counts[i]), local_counts[i]);
+    }
+}
+```
+
+To επόμενο βήμα είναι ο υπολογισμός του prefix sum του ιστογράμματος όπως είδαμε στην
+\autonameref{sec:prefix-sum}.
+
+\newpage
+
+Τέλος χρησιμοποιόντας το prefix sum του ιστογράματος ξέρουμε την αρχική θέση στην ταξινομημένη
+ακολουθία τις κάθε υποακολουθίας ίσων τιμών. Με παραδοχή ότι ο αλγόριθμος δεν θα
+είναι σταθερός^[stable sorting: όταν η σειρά δυο ίσων στοιχείων πριν και μετά την ταξινόμηση μένει αδιάλακτη]
+μπορούμε παράλληλα να μετακινήσουμε κάθε στοιχείο στη σωστή του θέση.
+
+``` { .cpp caption="Παράληλλη Μετάθεση Στοιχείων"}
+__global__ void counting_move(unsigned int *d_prefix_sums, elem *d_unsorted, elem *d_sorted, size_t size)
+{
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    elem cur_elem;
+    unsigned int offset = 0;
+
+    for (int i = tid; i < size; i += stride) {
+        cur_elem = d_unsorted[i];
+        offset = atomicAdd(&d_prefix_sums[cur_elem], 1);
+        d_sorted[offset] = cur_elem;
+    }
+}
+```
+
+
+## Radix sort
+
+Όπως αναφέρθηκε στην \autonameref{sec:algo-radix} ο radix sort μπορεί να υλοποιηθεί σαν
+επέκταση του counting sort.
+
+Πιο συγκεκριμένα λειτουργεί σε επαναλήψεις κοιτώντας τα ψηφία του κάθε στοιχείου αντί για το ίδιο το στοιχείο.
+Έτσι αντί να ταξινομούμε τα στοιχεία της ακολουθίας
+ψηφίο-προς-ψηφίο στο δεκαδικό σύστημα όπως θα έκανε μια αφελή υλοποίηση, κοιτάμε
+τα ψηφία των στοιχείων στο δυαδικό σύστημα σε ομάδες των 8bit.
+Εφόσον ταξινομούμε 32bit αριθμούς χρειαζόμαστε 4 επαναλήψεις.
+Κάθε ομάδα των 8bit μπορεί να αναπαραστήσει $2^8 = 256$ ξεχωριστές τιμές, άρα το ιστόγραμμα μας
+θα είναι πίνακας 256 τιμών
+
+Δεν επιλέχθηκαν τυχαία ομάδες 8bit, είναι η μεγαλύτερη ομάδα η οποία διαιρεί τέλεια 32bit αριθμούς
+και της οποίας το ιστόγραμμα χωράει στην shared memory (περίπου 40.000 byte).Πιάνει στην μνήμη:
+\[
+2^8 \cdot \textrm{sizeof}(\textrm{unsigned int}) = 256 \cdot 4 = 1024 \textrm{ byte}
+\]
+Η αμέσως μεγαλύτερη ομάδα που διαιρεί τέλεια 32bit αριθμούς είναι η ομάδα μεγέθους 16bit η οποία
+πιάνει στη μνήμη πολύ περισσότερο χώρο από όσο έχουμε διαθέσιμο:
+\[
+2^{16} \cdot \textrm{sizeof}(\textrm{unsigned int}) = 65536 \cdot 4 = 262144 \textrm{ byte}
+\]
+
+Εξετάζουμε μόνο τα δυφία που αφορά την παρούσα επανάληψη χρησιμοποιώντας ένα bitmask στο κάθε στοιχείο
+και μετατοπίζοντας το αποτέλεσμα δεξιά μέχρι η ομάδα να βρίσκεται στα τελευταία 8 bit της μνήμης.
+
+Τελικά όπως είδαμε πριν στην \autonameref{sec:impl-counting} το πρώτο βήμα είναι η δημιουργία του ιστογράμματος
+των τιμών, αυτή τη φορά βέβαια χρησιμοποιώντας την bitmasked τιμή των στοιχείων.
+
+``` { .cpp caption="Καταμέτρηση Τιμών με bitmask"}
+__global__ void count_masked(elem *array, size_t size, unsigned int *counts, unsigned int mask, size_t shift, size_t mask_size)
+{
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    /* block id and stride */
+    int block_tid = threadIdx.x;
+    int block_stride = blockDim.x;
+
+    __shared__ unsigned int local_counts[KEYS_COUNT];
+
+    // zero out the block local shared memory
+    for (size_t i = block_tid; i < KEYS_COUNT; i += block_stride) {
+        local_counts[i] = 0;
+    }
+
+    syncthreads();
+
+    for (size_t i = tid; i < size; i += stride) {
+        atomicAdd(&local_counts[(array[i] & mask) >> (mask_size * shift)], 1);
+    }
+
+    syncthreads();
+
+    // copy per block results back to ____global____ memory
+    for (size_t i = block_tid; i < KEYS_COUNT; i += block_stride) {
+        atomicAdd(&(counts[i]), local_counts[i]);
+    }
+}
+```
+
+
+Ξανά, το επόμενο βήμα είναι ο υπολογισμός του prefix sum του ιστογράμματος όπως είδαμε στην
+\autonameref{sec:prefix-sum}.
+
+Τέλος απομένει η μετάθεση των τιμών στην σωστή θέση αυτής της επανάληψης. Δυστυχώς, αυτή την φορά
+είναι πολύ σημαντικό ο αλγόριθμος να είναι σταθερός από την μία επανάληψη στην επόμενη. Πρέπει να
+είναι σταθερός γιατί στοιχεία που έχουν την ίδια bitmasked τιμή σε αυτή την επανάληψη μπορεί να
+έχουν διαφορετική πραγματική τιμή και να χαθεί η σειρά που δόθηκε στα στοιχεία σε μια προηγούμενη επανάληψη.
+
+Τελικά δηλαδή δεν μπορούμε να μεταθέσουμε τα στοιχεία παράλληλα, άρα η μετάθεση γίνεται σε host κώδικα,
+αυτό μας επιφέρει επιπλέον κόστος μεταφοράς δεδομένων από το device στον host και πίσω.
+
+``` { .cpp caption="Σειριακή Μετάθεση Στοιχείων"}
+__host__ void host_move(unsigned int *prefix_sums, elem *unsorted, elem *sorted, size_t size, unsigned int mask, unsigned long mask_size, unsigned long shift) {
+    int offset = 0;
+
+    for (size_t j = 0; j < size; ++j) {
+        ulong masked_elem = (unsorted[j] & mask) >> (mask_size * shift);
+
+        offset = prefix_sums[masked_elem];
+        prefix_sums[masked_elem] += 1;
+        sorted[offset] = unsorted[j];
+    }
+}
+```
+
+## Bitonic sort
+
+Υλοποιήθηκε παρόμοια με το prefix sum χρησιμοποιώντας ένα εξωτερικό βρόχο και έναν εσωτερικό βρόχο που βρίσκεται
+στο kernel.
+
+``` { .cpp caption="Εξωτερικός βρόχος bitonic sort"}
+for (int k = 2; k <= (int)size; k *= 2) { // k is doubled every iteration
+    for (int j = k/2; j > 0; j /= 2) { // j is halved at every iteration, with truncation of fractional parts
+        bitonic_step<<<blocks, threads>>>(d_unsorted, size, k, j);
+    }
+}
+```
+
+``` { .cpp caption="Βήμα bitonic sort"}
+__global__ void bitonic_step(elem* d_arr, size_t size, int k, int j)
+{
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    int stride = blockDim.x + gridDim.x;
+
+    int tmp;
+    int ij;
+    int v;
+    // i is the index of our first element
+    for (int i = tid; i < size; i += stride) {
+        // ij is the index of the second element, the one we compare the first with
+        ij = i ^ j;
+        // v keeps track of the order we want to sort the i'th chunk of size k,
+        // if it's 0 it's ascending else it's descending
+        v = i & k;
+
+        // if the element we compare to is after our element ?
+        if (ij > i) {
+            // if the elements are not in the correct order that we want
+            if ((v == 0 && d_arr[i] > d_arr[ij]) || (v != 0 && (d_arr[i] < d_arr[ij]))) {
+                // swap the elements at index i and ij
+                tmp = d_arr[i];
+                d_arr[i] = d_arr[ij];
+                d_arr[ij] = tmp;
+            }
+        }
+    }
+}
+```
+
+# Αποτελέσματα
+
+```{r, code=readLines("./graph.R"), echo=FALSE, message=FALSE, cache=TRUE, cache.extra = tools::md5sum('./graph.R')}
+```
+
+```{r, results='asis', echo=FALSE, message=FALSE, fig.cap = "asd"}
+print(graph_all)
+```
+
+
+# TODO: FUTURE
+
+radix msb vs lsb and stability
+
+\newpage
+
+<!-- \nocite{R} -->
+\nocite{Rmd}
+\nocite{RmdDG}
+\nocite{RmdCB}

@@ -66,7 +66,7 @@ __global__ void prefix_sum_kernel(unsigned int *in, unsigned int *out, unsigned 
     //     printf("in[0] = %d\n", in[0]);
     // }
 
-    syncthreads();
+    // syncthreads();
 
     // PERF: shift instead of pow(2, *)?
     // don't go out of bounds

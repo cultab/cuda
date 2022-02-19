@@ -38,7 +38,7 @@ __global__ void count(elem *array, size_t size, unsigned int *counts, elem max_v
 
     syncthreads();
 
-    // copy per block results back to ____global____ memory
+    // copy per block results back to global memory
     for (size_t i = block_tid; i < max_value; i += block_stride) {
         // debug("block(%d): adding local_counts[%lu]=%u to counts[%lu]=%u\n",blockIdx.x, i, local_counts[i], i, counts[i]);
         atomicAdd(&(counts[i]), local_counts[i]);

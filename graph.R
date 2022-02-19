@@ -172,7 +172,7 @@ graph_bitonic <- ggplot(data = data5,
     labs(y = "Time log(s)", x = "Size of Array",
         color = "GPU", title = "Bitonic sort")
 
-pdf <- TRUE
+pdf <- FALSE
 
 if (pdf)
     pdf("graphs.pdf", width = 10, height = 10)
