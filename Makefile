@@ -69,7 +69,10 @@ render:
 	R --quiet -e "require(rmarkdown);render('report.rmd');"
 
 submit:
-	cp report.pdf 171014.pdf
-	zip 171014.zip 171014.pdf
+	cp report.pdf Project_Παράλληλου_Υπολογισμού.pdf
+	7z a Project_Παράλληλου_Υπολογισμού_171014.zip Project_Παράλληλου_Υπολογισμού.pdf \
+		 graph.R bench.sh Makefile bitonic.cu counting.cu helpers.cu main.cu prefix_sum.cu \
+		 print.cu radix.cu bitonic.h counting.h helpers.h prefix_sum.h print.h \
+		 radix.h types.h results_1.csv results_2.csv
 
 .PHONY: all options clean run debug release profile render submit

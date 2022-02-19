@@ -48,6 +48,7 @@ header-includes:
     \usepackage{svg}
     \usepackage{multicol}
     \definecolor{uniwalightblue}{RGB}{103, 173, 224}
+    \definecolor{uniwagreen}{RGB}{27, 176, 30}
     \definecolor{uniwablue}{RGB}{18, 60, 100}
     \definecolor{uniwaorange}{RGB}{230, 124, 23}
     \usepackage{hyperref}
@@ -87,9 +88,33 @@ header-includes:
 <!-- ```{python, code=readLines("file"), echo=FALSE, results='asis', cache=USE_CACHE, cache.extra = tools::md5sum('./file')} -->
 <!-- ``` -->
 
+\newcommand{\lstfont}[1]{\color{#1}\footnotesize\ttfamily}
+\newcommand{\lstbfont}[1]{\color{#1}\footnotesize\bfseries}
+
+<!-- \lstset{ -->
+<!--     language=[ANSI]C++, -->
+<!--     showstringspaces=false, -->
+<!--     backgroundcolor=\color{black!90}, -->
+<!--     basicstyle=\lstfont{white}, -->
+<!--     sensitive=true, -->
+<!--     identifierstyle=\lstbfont{uniwablue!80!white}, -->
+<!--     keywordstyle=\lstbfont{uniwagreen}, -->
+<!--     numberstyle=\lstfont{white}, -->
+<!--     stringstyle=\lstbfont{cyan}, -->
+<!--     commentstyle=\lstfont{uniwalightblue}, -->
+<!--     emph={ -->
+<!--         cudaMalloc, cudaFree, -->
+<!--         __global__, __shared__, __device__, __host__, -->
+<!--         __syncthreads, -->
+<!--     }, -->
+<!--     emphstyle={\lstbfont{uniwaorange}}, -->
+<!--     breaklines=true -->
+<!-- } -->
+
 \newcommand\autonameref[1]{\autoref{#1}, {\nameref{#1}}}
 
 \renewcommand*{\lstlistlistingname}{Κατάλογος Κώδικα}
+\renewcommand*{\lstlistingname}{Κώδικας}
 
 \tableofcontents
 
@@ -101,8 +126,12 @@ header-includes:
 
 # Εισαγωγή
 
-Σε αυτή την εργασία θα δούμε τρεις αλγορίθμους ταξινόμησης όπως και την υλοποίησή τους σε CUDA.
+Σε αυτή την εργασία θα δούμε τρεις αλγορίθμους ταξινόμησης και θα τους υλοποιήσουμε σε CUDA.
+
 Οι αλγόριθμοι που επιλέχθηκαν είναι το radix sort, counting sort και bitonic sort.
+Αρχικά θα δούμε την γενική ιδέα γύρω από τον κάθε αλγόριθμο, όπως τυχόν προτερήματα και μειονεκτήματα.
+Ύστερα θα δούμε την υλοποίηση του κάθε αλγόριθμου μαζί με κάποιες λεπτομέρειες της υλοποίησης.
+Τέλος θα συγκρίνουμε τα αποτελέσματα επιδόσεων των αλγορίθμων και θα προσπαθήσουμε να βγάλουμε συμπεράσματα.
 
 # Αλγόριθμοι
 
@@ -122,8 +151,8 @@ header-includes:
 
 ## Bitonic sort
 
-Δεν είναι εξαιρετικά αποδοτικός αλγόριθμος.
 Το bitonic sort βασίζεται στις ιδιότητες των διτονικών ακολουθιών.
+Είναι ενδιαφέρον γιατί μπορεί να υλοποιηθεί σαν ένα sorting network όπως γράφει ο @networks.
 
 Ξεκινάει χτίζοντας αύξουσες και φθίνουσες υποακολουθίες εναλλάξ μήκους 2 στοιχείων.
 Συνεχίζει μέχρι να έχει μια αύξουσα και μια φθίνουσα ακολουθία εκμεταλεβόμενος το γεγονός ότι
@@ -160,7 +189,7 @@ Giving 0 instead of <size> <threads> or <blocks> uses their default values.
 
 Counting sort also requires the extra argument [max value].
 
-## Prefix sum {#sec:prefix-sum}
+## Prefix Sum {#sec:prefix-sum}
 
 Το prefix sum χρησιμοποιείται από το radix sort και το counting sort.
 Η υλοποίηση βασίζεται στον αλγόριθμο *All Partial Sums of an Array*
@@ -349,7 +378,7 @@ __global__ void count_masked(elem *array, size_t size, unsigned int *counts, uns
 
     syncthreads();
 
-    // copy per block results back to ____global____ memory
+    // copy per block results back to global memory
     for (size_t i = block_tid; i < KEYS_COUNT; i += block_stride) {
         atomicAdd(&(counts[i]), local_counts[i]);
     }
@@ -385,7 +414,7 @@ __host__ void host_move(unsigned int *prefix_sums, elem *unsorted, elem *sorted,
 ## Bitonic sort
 
 Υλοποιήθηκε παρόμοια με το prefix sum χρησιμοποιώντας ένα εξωτερικό βρόχο και έναν εσωτερικό βρόχο που βρίσκεται
-στο kernel.
+στο kernel. Βασίζετε στην συνάρτηση `impBitonicSort()` του @bitonic.
 
 ``` { .cpp caption="Εξωτερικός βρόχος bitonic sort"}
 for (int k = 2; k <= (int)size; k *= 2) { // k is doubled every iteration
@@ -426,23 +455,97 @@ __global__ void bitonic_step(elem* d_arr, size_t size, int k, int j)
 }
 ```
 
+\newpage
+
 # Αποτελέσματα
 
-```{r, code=readLines("./graph.R"), echo=FALSE, message=FALSE, cache=TRUE, cache.extra = tools::md5sum('./graph.R')}
+Οι δοκιμές έγιναν σε τοπική εγκατάσταση με 1050ti όπως και στον server με ΤΙΤΑΝ RTX, δεν ήταν δυνατό να γίνουν δοκιμές
+στον server του εργαστηρίου με την 750ti λόγο κάποιων ασυμβατοτήτων του κώδικα με το compute capability 5.0 της 750ti.
+
+Τα δεδομένα συλλέχθηκαν με την χρήση του script `bench.sh` και τα διαγράμματα δημιουργήθηκαν με την χρήση του R script `graphs.R`.
+Τα διαγράμματα δημιουργήθηκαν με σκοπό να επιδείξουν την επίδραση διαφορετικών διατάξεων block/thread, την κάρτα γραφικών
+και τον αλγόριθμο
+
+```{r, code=readLines("./graph.R"), echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE, cache.extra = tools::md5sum('./graph.R')}
 ```
 
-```{r, results='asis', echo=FALSE, message=FALSE, fig.cap = "asd"}
+Στο πρώτο διάγραμμα βλέπουμε τον χρόνο εκτέλεσης των αλγορίθμων με διάφορες διατάξεις block/thread και
+στις δύο κάρτες. Μπορούμε να διακρίνουμε ότι ο bitonic σε μικρές ακολουθίες έχει πολύ καλά αποτελέσματα
+αλλά γρήγορα μένει πίσω όσο το μέγεθος τους μεγαλώνει. Ο counting sort είναι καθαρά πιο
+γρήγορος από τον radix sort, αλλά βέβαια λειτουργεί με σχετικά **πολύ** μικρό εύρος τιμών.
+
+```{r, results='asis', echo=FALSE, message=FALSE, fig.cap = "Σύγκριση καρτών ανά διάφορες διατάξεις block/thread ανά αλγόρυθμο"}
 print(graph_all)
 ```
 
+\newpage
 
-# TODO: FUTURE
+Στο δέυτερο βλέπουμε την επίδραση που έχει η επιλογή διάταξης block/thread στον χρόνο εκτλέλεσης.
+Η διαφορά είναι πιο εμφανής στο counting sort και στο bitonic sort.
 
-radix msb vs lsb and stability
+```{r, results='asis', echo=FALSE, message=FALSE, fig.cap = "Σύγκριση διάφορων διατάξεων block/thread ανά κάρτα και αλγόριθμο"}
+print(graph_blocks)
+```
 
 \newpage
 
-<!-- \nocite{R} -->
+Στο επόμενο βλέπουμε ακόμα πιο καθαρά αυτό το παρατηρήσαμε νωρίτερα, με την διάταξη block/thread να
+έχει την μεγαλύτερη επιρροή στο bitonic sort και μετά στο counting sort με το radix να μην
+φαίνεται να επηρεάζεται.
+
+```{r, results='asis', echo=FALSE, message=FALSE, fig.cap = "Σύγκριση καρτών ανά αλγορίθμο με διαφόρες διτάξεις block/thread"}
+print(graph_blocks1)
+```
+
+\newpage
+
+Παρακάτω βλέπουμε αποτελέσματα μόνο για το radix sort.
+
+```{r, results='asis', echo=FALSE, message=FALSE, fig.cap = "Επίδοση radix sort με διάφορες διατάξεις block/thread ανα κάρτα"}
+print(graph_radix)
+```
+
+\newpage
+
+Παρακάτω βλέπουμε αποτελέσματα για το counting sort με διαφορετικές τιμές max value.
+Δεν μπορούμε να διακρίνουμε κανένα αποτέλεσμα. Αυτό ίσως είναι όπως θα περιμέναμε γιατί 
+η διαφορά θα περιμέναμε να βρίσκεται στην μνήμη που χρειαζόμαστε.
+
+```{r, results='asis', echo=FALSE, message=FALSE, fig.cap = "Επίδοση counting sort με διάφορες διατάξεις block/thread και max value ανα κάρτα"}
+print(graph_counting)
+```
+
+\newpage
+
+Τέλος βλέπουμε αποτελέσματα για το bitonic sort.
+
+```{r, results='asis', echo=FALSE, message=FALSE, fig.cap = "Επίδοση bitonic sort με διάφορες διατάξεις block/thread ανα κάρτα"}
+print(graph_bitonic)
+```
+
+# Συμπεράσματα
+
+* Το bitonic sort δεν είναι πολύ αποδοτικό για μεγάλες ακολουθίες αλλά είναι πολύ αποδοτικό για μικρές.
+
+* Η επίδοση του radix sort υπέφερε πιθανώς λόγο της ανάγκης σειριακής μετάβασης των στοιχείων,
+  για αυτό η διάταξη block/thread δεν φάνηκε να έχει επίδραση.
+
+* Το counting sort είναι πολύ αποδοτικό.
+
+* Η 1050ti μερικές φορές είχε ασταθή επίδοση όπως είδαμε στα "καρφιά" που
+  δημιουργήθηκαν σε πολλά διαγράμματα.
+
+# Πιθανός ενδιαφέροντα θέματα για μελλοντική εξερεύνηση
+
+Μια υλοποίηση radix sort βασισμένη στην εργασία των @4way_radix.
+
+Διαφορές most significant digit radix sort με least significant radix sort (όπως η παρούσα υλοποίηση).
+
+Βελτιστοποίηση counting sort για ακολουθίες με εύρος τιμών πολύ μικρότερο από το max value.
+
+\newpage
+
+\nocite{R}
 \nocite{Rmd}
 \nocite{RmdDG}
 \nocite{RmdCB}

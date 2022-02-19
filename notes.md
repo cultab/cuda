@@ -18,3 +18,9 @@ todo in order of importance:
     * [ ] benchmarking code and results
     * [x] bitonic sort :^)
     * [ ] comments
+
+shift instead of pow(2, *)
+uint and unsigned int
+int sizes 32vs64 in gpu
+
+see: https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda

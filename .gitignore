@@ -1,2 +1,8 @@
 sort
 *.o
+report_cache
+report_files
+*.pdf
+*.zip
+*.log
+*.lol
