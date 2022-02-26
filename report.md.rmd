@@ -8,121 +8,15 @@ subtitle: |
 author: Ευάγγελος Κατσανδρής (cs171014@uniwa.gr)
 date: "`r Sys.setlocale('LC_TIME', 'el_GR.utf8'); format(Sys.time(), '%d %B, %Y')`"
 output: 
-    pdf_document:
-        template: eisvogel
-        highlight: kate
-        latex_engine: lualatex
+    md_document:
+        variant: "gfm"
+        toc: true
         number_sections: true
-        toc: false
-        citation_package: biblatex
         pandoc_args: [ "--listings" ]
 bibliography: "bibliography.bib"
 biblatexoptions: "sorting=none"
 lang: "el"
-mainfont: 'Liberation Serif'
-sansfont: 'Liberation Sans'
-#mathfont: 'DejaVu Math TeX Gyre'
-monofont: 'Source Code Pro'
-fontsize: 11pt
-geometry: "margin=2.5cm"
-code-block-font-size: \footnotesize
-table-use-row-colors: true
-titlepage: true
-titlepage-rule-color: "123c64"
-titlepage-rule-height: 10
-caption-justification: centering
-toc-own-page: false
-header-includes:
-    \newfontfamily\greekfont{LiberationSerif}
-    \newfontfamily\greekfontsf{LiberationSerif}
-    \newfontfamily\greekfonttt{LiberationMono}
-    \usepackage{float}
-    \usepackage{subcaption}
-    \usepackage{pgf}
-    \usepackage{tikz}
-    \usepackage{tikzscale}
-    \usepackage{pgfplots}
-    \usepackage{chngcntr}
-    \counterwithin{figure}{section}
-    \pgfplotsset{compat=1.17}
-    \usepackage{svg}
-    \usepackage{multicol}
-    \definecolor{uniwalightblue}{RGB}{103, 173, 224}
-    \definecolor{uniwagreen}{RGB}{27, 176, 30}
-    \definecolor{uniwablue}{RGB}{18, 60, 100}
-    \definecolor{uniwaorange}{RGB}{230, 124, 23}
-    \usepackage{hyperref}
-    \hypersetup{
-        linkcolor  = black,
-        citecolor  = uniwaorange,
-        urlcolor   = uniwablue,
-        colorlinks = true,
-    }
-    \urlstyle{same}
 ---
-
-<!-- \begin{figure}[H] -->
-<!-- \centering -->
-<!--     \begin{subfigure}[b]{\textwidth} -->
-<!--     \centering -->
-<!--         \includegraphics[width=\textwidth]{} -->
-<!--         \caption{} -->
-<!--     \end{subfigure} -->
-<!--     \begin{subfigure}[b]{\textwidth} -->
-<!--     \centering -->
-<!--         \includegraphics[width=\textwidth]{} -->
-<!--         \caption{} -->
-<!--     \end{subfigure} -->
-<!--     \caption{} -->
-<!--     \label{} -->
-<!-- \end{figure} -->
-
-<!--```{python, code=readLines("file"), results='asis', cache=USE_CACHE, cache.extra = tools::md5sum('./file')}
-``` -->
-
-<!-- ```{python, code=readLines("file"), eval=FALSE} -->
-<!-- ``` -->
-<!--  -->
-<!-- ## Αποτελέσματα -->
-<!--  -->
-<!-- ```{python, code=readLines("file"), echo=FALSE, results='asis', cache=USE_CACHE, cache.extra = tools::md5sum('./file')} -->
-<!-- ``` -->
-
-\newcommand{\lstfont}[1]{\color{#1}\footnotesize\ttfamily}
-\newcommand{\lstbfont}[1]{\color{#1}\footnotesize\bfseries}
-
-<!-- \lstset{ -->
-<!--     language=[ANSI]C++, -->
-<!--     showstringspaces=false, -->
-<!--     backgroundcolor=\color{black!90}, -->
-<!--     basicstyle=\lstfont{white}, -->
-<!--     sensitive=true, -->
-<!--     identifierstyle=\lstbfont{uniwablue!80!white}, -->
-<!--     keywordstyle=\lstbfont{uniwagreen}, -->
-<!--     numberstyle=\lstfont{white}, -->
-<!--     stringstyle=\lstbfont{cyan}, -->
-<!--     commentstyle=\lstfont{uniwalightblue}, -->
-<!--     emph={ -->
-<!--         cudaMalloc, cudaFree, -->
-<!--         __global__, __shared__, __device__, __host__, -->
-<!--         __syncthreads, -->
-<!--     }, -->
-<!--     emphstyle={\lstbfont{uniwaorange}}, -->
-<!--     breaklines=true -->
-<!-- } -->
-
-\newcommand\autonameref[1]{\autoref{#1}, {\nameref{#1}}}
-
-\renewcommand*{\lstlistlistingname}{Κατάλογος Κώδικα}
-\renewcommand*{\lstlistingname}{Κώδικας}
-
-\tableofcontents
-
-\listoffigures
-
-\lstlistoflistings
-
-\newpage
 
 # Εισαγωγή
 
@@ -163,7 +57,6 @@ header-includes:
 Σε αυτό το σημείο συγχωνεύει τις υποακολουθίες εκμεταλλευόμενος των ιδιοτήτων που οι
 διτονικές ακολουθίες έχουν σε σχέση με την ανισότητα των στοιχείων των υποακολουθειών τους.
 
-\newpage
 
 # Υλοποίηση
 
@@ -253,7 +146,6 @@ __global__ void prefix_sum_kernel(unsigned int *in, unsigned int *out, unsigned 
 }
 ```
 
-\newpage
 
 ## Counting sort {#sec:impl-counting}
 
@@ -299,8 +191,6 @@ __global__ void count(elem *array, size_t size, unsigned int *counts, elem max_v
 
 To επόμενο βήμα είναι ο υπολογισμός του prefix sum του ιστογράμματος όπως είδαμε στην
 \autonameref{sec:prefix-sum}.
-
-\newpage
 
 Τέλος χρησιμοποιόντας το prefix sum του ιστογράματος ξέρουμε την αρχική θέση στην ταξινομημένη
 ακολουθία τις κάθε υποακολουθίας ίσων τιμών. Με παραδοχή ότι ο αλγόριθμος δεν θα
@@ -454,8 +344,6 @@ __global__ void bitonic_step(elem* d_arr, size_t size, int k, int j)
 }
 ```
 
-\newpage
-
 # Αποτελέσματα
 
 Οι δοκιμές έγιναν σε τοπική εγκατάσταση με 1050ti όπως και στον server με ΤΙΤΑΝ RTX, δεν ήταν δυνατό να γίνουν δοκιμές
@@ -477,16 +365,12 @@ __global__ void bitonic_step(elem* d_arr, size_t size, int k, int j)
 print(graph_all)
 ```
 
-\newpage
-
 Στο δέυτερο βλέπουμε την επίδραση που έχει η επιλογή διάταξης block/thread στον χρόνο εκτλέλεσης.
 Η διαφορά είναι πιο εμφανής στο counting sort και στο bitonic sort.
 
 ```{r, results='asis', echo=FALSE, message=FALSE, fig.cap = "Σύγκριση διάφορων διατάξεων block/thread ανά κάρτα και αλγόριθμο"}
 print(graph_blocks)
 ```
-
-\newpage
 
 Στο επόμενο βλέπουμε ακόμα πιο καθαρά αυτό το παρατηρήσαμε νωρίτερα, με την διάταξη block/thread να
 έχει την μεγαλύτερη επιρροή στο bitonic sort και μετά στο counting sort με το radix να μην
@@ -496,15 +380,11 @@ print(graph_blocks)
 print(graph_blocks1)
 ```
 
-\newpage
-
 Παρακάτω βλέπουμε αποτελέσματα μόνο για το radix sort.
 
 ```{r, results='asis', echo=FALSE, message=FALSE, fig.cap = "Επίδοση radix sort με διάφορες διατάξεις block/thread ανα κάρτα"}
 print(graph_radix)
 ```
-
-\newpage
 
 Παρακάτω βλέπουμε αποτελέσματα για το counting sort με διαφορετικές τιμές max value.
 Δεν μπορούμε να διακρίνουμε κανένα αποτέλεσμα. Αυτό δεν μας ξαφνιάζει γιατί
@@ -513,8 +393,6 @@ print(graph_radix)
 ```{r, results='asis', echo=FALSE, message=FALSE, fig.cap = "Επίδοση counting sort με διάφορες διατάξεις block/thread και max value ανα κάρτα"}
 print(graph_counting)
 ```
-
-\newpage
 
 Τέλος βλέπουμε αποτελέσματα για το bitonic sort.
 
@@ -543,8 +421,6 @@ print(graph_bitonic)
 Βελτιστοποίηση counting sort για ακολουθίες με εύρος τιμών πολύ μικρότερο από το max value.
 
 Βελτιστοποιημένη υλοποίηση του prefix sum.
-
-\newpage
 
 \nocite{R}
 \nocite{Rmd}

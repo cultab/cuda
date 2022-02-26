@@ -68,6 +68,10 @@ clean:
 render:
 	R --quiet -e "require(rmarkdown);render('report.rmd');"
 
+convert:
+	R --quiet -e "require(rmarkdown);render('report.md.rmd');"
+	mv report.md.md Readme.md
+
 submit:
 	cp report.pdf Project_Παράλληλου_Υπολογισμού.pdf
 	7z a Project_Παράλληλου_Υπολογισμού_171014.zip Project_Παράλληλου_Υπολογισμού.pdf \
