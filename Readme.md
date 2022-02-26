@@ -1,3 +1,46 @@
+<!-- \begin{figure}[H] -->
+<!-- \centering -->
+<!--     \begin{subfigure}[b]{\textwidth} -->
+<!--     \centering -->
+<!--         \includegraphics[width=\textwidth]{} -->
+<!--         \caption{} -->
+<!--     \end{subfigure} -->
+<!--     \begin{subfigure}[b]{\textwidth} -->
+<!--     \centering -->
+<!--         \includegraphics[width=\textwidth]{} -->
+<!--         \caption{} -->
+<!--     \end{subfigure} -->
+<!--     \caption{} -->
+<!--     \label{} -->
+<!-- \end{figure} -->
+<!--```{python, code=readLines("file"), results='asis', cache=USE_CACHE, cache.extra = tools::md5sum('./file')}
+``` -->
+<!-- ```{python, code=readLines("file"), eval=FALSE} -->
+<!-- ``` -->
+<!--  -->
+<!-- ## Αποτελέσματα -->
+<!--  -->
+<!-- ```{python, code=readLines("file"), echo=FALSE, results='asis', cache=USE_CACHE, cache.extra = tools::md5sum('./file')} -->
+<!-- ``` -->
+<!-- \lstset{ -->
+<!--     language=[ANSI]C++, -->
+<!--     showstringspaces=false, -->
+<!--     backgroundcolor=\color{black!90}, -->
+<!--     basicstyle=\lstfont{white}, -->
+<!--     sensitive=true, -->
+<!--     identifierstyle=\lstbfont{uniwablue!80!white}, -->
+<!--     keywordstyle=\lstbfont{uniwagreen}, -->
+<!--     numberstyle=\lstfont{white}, -->
+<!--     stringstyle=\lstbfont{cyan}, -->
+<!--     commentstyle=\lstfont{uniwalightblue}, -->
+<!--     emph={ -->
+<!--         cudaMalloc, cudaFree, -->
+<!--         __global__, __shared__, __device__, __host__, -->
+<!--         __syncthreads, -->
+<!--     }, -->
+<!--     emphstyle={\lstbfont{uniwaorange}}, -->
+<!--     breaklines=true -->
+<!-- } -->
 # 1 Εισαγωγή
 
 Σε αυτή την εργασία θα δούμε τρεις αλγορίθμους ταξινόμησης και θα τους
@@ -343,26 +386,26 @@ counting sort είναι καθαρά πιο γρήγορος από τον radi
 λειτουργεί με σχετικά **πολύ** μικρό εύρος τιμών.
 
 ![Σύγκριση καρτών ανά διάφορες διατάξεις block/thread ανά
-αλγόρυθμο](report.md_files/figure-gfm/unnamed-chunk-2-1.png)
+αλγόρυθμο](report_files/figure-gfm/unnamed-chunk-2-1.png)
 
 Στο δέυτερο βλέπουμε την επίδραση που έχει η επιλογή διάταξης
 block/thread στον χρόνο εκτλέλεσης. Η διαφορά είναι πιο εμφανής στο
 counting sort και στο bitonic sort.
 
 ![Σύγκριση διάφορων διατάξεων block/thread ανά κάρτα και
-αλγόριθμο](report.md_files/figure-gfm/unnamed-chunk-3-1.png)
+αλγόριθμο](report_files/figure-gfm/unnamed-chunk-3-1.png)
 
 Στο επόμενο βλέπουμε ακόμα πιο καθαρά αυτό το παρατηρήσαμε νωρίτερα, με
 την διάταξη block/thread να έχει την μεγαλύτερη επιρροή στο bitonic sort
 και μετά στο counting sort με το radix να μην φαίνεται να επηρεάζεται.
 
 ![Σύγκριση καρτών ανά αλγορίθμο με διαφόρες διτάξεις
-block/thread](report.md_files/figure-gfm/unnamed-chunk-4-1.png)
+block/thread](report_files/figure-gfm/unnamed-chunk-4-1.png)
 
 Παρακάτω βλέπουμε αποτελέσματα μόνο για το radix sort.
 
 ![Επίδοση radix sort με διάφορες διατάξεις block/thread ανα
-κάρτα](report.md_files/figure-gfm/unnamed-chunk-5-1.png)
+κάρτα](report_files/figure-gfm/unnamed-chunk-5-1.png)
 
 Παρακάτω βλέπουμε αποτελέσματα για το counting sort με διαφορετικές
 τιμές max value. Δεν μπορούμε να διακρίνουμε κανένα αποτέλεσμα. Αυτό δεν
@@ -370,12 +413,12 @@ block/thread](report.md_files/figure-gfm/unnamed-chunk-4-1.png)
 χρειαζόμαστε και όχι στον χρόνο εκτέλεσης.
 
 ![Επίδοση counting sort με διάφορες διατάξεις block/thread και max value
-ανα κάρτα](report.md_files/figure-gfm/unnamed-chunk-6-1.png)
+ανα κάρτα](report_files/figure-gfm/unnamed-chunk-6-1.png)
 
 Τέλος βλέπουμε αποτελέσματα για το bitonic sort.
 
 ![Επίδοση bitonic sort με διάφορες διατάξεις block/thread ανα
-κάρτα](report.md_files/figure-gfm/unnamed-chunk-7-1.png)
+κάρτα](report_files/figure-gfm/unnamed-chunk-7-1.png)
 
 # 5 Συμπεράσματα
 

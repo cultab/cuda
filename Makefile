@@ -66,11 +66,8 @@ clean:
 	rm -f main $(OBJ)
 
 render:
-	R --quiet -e "require(rmarkdown);render('report.rmd');"
-
-convert:
-	R --quiet -e "require(rmarkdown);render('report.md.rmd');"
-	mv report.md.md Readme.md
+	R --quiet -e "require(rmarkdown); render('report.rmd', output_format='all');"
+	mv report.md Readme.md
 
 submit:
 	cp report.pdf Project_Παράλληλου_Υπολογισμού.pdf

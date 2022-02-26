@@ -1,7 +1,7 @@
 sort
 *.o
 report_cache
-report_files
+./report_files/figure-latex
 *.pdf
 *.zip
 *.log

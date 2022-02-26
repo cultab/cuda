@@ -16,6 +16,11 @@ output:
         toc: false
         citation_package: biblatex
         pandoc_args: [ "--listings" ]
+    md_document:
+        variant: "gfm"
+        toc: true
+        number_sections: true
+        pandoc_args: [ "--listings" ]
 bibliography: "bibliography.bib"
 biblatexoptions: "sorting=none"
 lang: "el"
